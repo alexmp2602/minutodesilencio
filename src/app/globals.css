@@ -1,26 +1,223 @@
-@import "tailwindcss";
-
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b0d10;
+  --bg-elev: #12161b;
+  --text: #e8eef3;
+  --muted: #a8b3bd;
+  --primary: #6cc5ff;
+  --border: #1f2730;
+  --radius: 14px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+main {
+  width: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Links */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Imágenes y multimedia */
+img,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* fullscreen helpers */
+.screen {
+  min-height: 100dvh;
+  width: 100%;
+  display: grid;
+  align-items: start;
+  padding: 24px;
+}
+.bg-radial {
+  background: radial-gradient(
+    1200px 600px at 50% 30%,
+    #111a22 0%,
+    #0b0d10 55%,
+    #0b0d10 100%
+  );
+}
+
+/* tipografías utilitarias */
+.h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+.muted {
+  color: var(--muted);
+  line-height: 1.7;
+  max-width: 720px;
+}
+
+/* separadores */
+.mt-8 {
+  margin-top: 8px;
+}
+.mt-16 {
+  margin-top: 16px;
+}
+.mt-24 {
+  margin-top: 24px;
+}
+
+/* intro */
+.intro-card {
+  place-self: center;
+  text-align: center;
+  max-width: 760px;
+  padding: 32px 24px;
+}
+.btn {
+  appearance: none;
+  border: none;
+  background: var(--primary);
+  color: #0b0d10;
+  font-weight: 700;
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.btn:hover {
+  filter: brightness(1.05);
+}
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ritual */
+.ritual-wrap {
+  place-self: center;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+.circle-wrap {
+  position: relative;
+  width: 260px;
+  height: 260px;
+  margin-bottom: 18px;
+}
+.circle-time {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 48px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* crossfade mensajes */
+.crossfade {
+  position: relative;
+  min-height: 90px;
+  margin-top: 6px;
+}
+.crossfade-item {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: crossfade-in 0.6s ease forwards;
+}
+.crossfade-item.title {
+  font-size: clamp(18px, 3vw, 24px);
+  font-weight: 700;
+}
+.crossfade-item.text {
+  color: var(--muted);
+  margin-top: 36px;
+  line-height: 1.7;
+}
+
+/* animaciones */
+.fade-in-600 {
+  animation: fade-in 600ms ease both;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes crossfade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* respeto a reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-600,
+  .crossfade-item {
+    animation-duration: 1ms;
+  }
+  .crossfade-item {
+    transform: none;
+  }
+}
+
+/* balanceo de líneas y control de cortes */
+.text-balance {
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+/* (ya existentes, pero ajustamos el ancho de los textos del ritual) */
+.crossfade {
+  position: relative;
+  min-height: 120px;
+  margin-top: 10px;
+  width: min(520px, 90vw);
+}
+.crossfade-item.text {
+  color: var(--muted);
+  margin-top: 36px;
+  line-height: 1.7;
+}
+
+/* centrado del contenedor del ritual con ancho cómodo */
+.ritual-wrap {
+  place-self: center;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  width: min(560px, 92vw);
 }
