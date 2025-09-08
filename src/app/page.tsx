@@ -1,10 +1,5 @@
 import ThreeScene from "@/components/ThreeScene";
-import dynamic from "next/dynamic";
-
-// Cargar el ping solo en cliente (evita cualquier advertencia en SSR)
-const SupabasePing = dynamic(() => import("@/components/SupabasePing"), {
-  ssr: false,
-});
+import SupabasePing from "@/components/SupabasePing";
 
 export default function HomePage() {
   return (
