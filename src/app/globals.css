@@ -221,3 +221,174 @@ canvas {
   text-align: center;
   width: min(560px, 92vw);
 }
+
+/* Mejor foco accesible en .btn */
+.btn:focus-visible {
+  outline: 2px solid color-mix(in hsl, var(--primary), white 20%);
+  outline-offset: 2px;
+}
+
+/* Selección de texto coherente con la paleta */
+::selection {
+  background: color-mix(in hsl, var(--primary), transparent 70%);
+  color: #0b0d10;
+}
+
+/* Canvas contenedor suave cuando esté en el jardín */
+canvas {
+  border-radius: var(--radius);
+}
+
+/* Ligero refinamiento del radial */
+.bg-radial {
+  background: radial-gradient(
+      1200px 600px at 50% 28%,
+      #111a22 0%,
+      #0b0d10 55%,
+      #0b0d10 100%
+    ),
+    var(--bg);
+}
+
+.skip-btn {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 20px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.skip-btn:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* === Fullscreen inmersivo para el jardín === */
+.screen-immersive {
+  position: fixed; /* cubre todo el viewport por encima del body */
+  inset: 0;
+  padding: 0; /* sin márgenes */
+  overflow: hidden; /* sin scroll */
+}
+
+.screen-immersive > canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ==== Garden Overlay (sobre el canvas) ==== */
+.garden-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* deja pasar clics al canvas por defecto */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 16px;
+}
+
+.garden-overlay .panel {
+  pointer-events: auto; /* permite interacción en el panel */
+  align-self: start;
+  background: color-mix(in oklab, var(--bg), white 2%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.garden-overlay .panel-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.garden-overlay .row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.garden-overlay .input {
+  flex: 1;
+  background: #0f1419;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  outline: none;
+}
+.garden-overlay .input:focus {
+  border-color: color-mix(in hsl, var(--primary), white 20%);
+}
+
+.garden-overlay .hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.garden-overlay .list {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+.garden-overlay .item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.garden-overlay .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+.garden-overlay .dot.alive {
+  background: #3aa65a;
+}
+.garden-overlay .dot.wilted {
+  background: #7a7a7a;
+}
+.garden-overlay .msg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.garden-overlay .ts {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 920px) {
+  .garden-overlay {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 12px;
+  }
+}
+
+.mute-btn {
+  position: absolute;
+  right: 16px;
+  bottom: 56px; /* un poco arriba del botón "saltear" si lo usás */
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: color 0.2s ease;
+  z-index: 20;
+}
+.mute-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
