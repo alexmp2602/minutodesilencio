@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
-// Fuente con display swap y variable CSS para futuras extensiones
+// Fuente variable con display swap
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
 });
 
-// Viewport: notch safe, color de barra del navegador según tema
+// Viewport seguro (notch) + color de barra
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -24,6 +24,7 @@ const siteUrl = "https://minutodesilencio.vercel.app";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  applicationName: "minutodesilencio",
   title: {
     default: "minutodesilencio",
     template: "%s · minutodesilencio",
@@ -49,7 +50,7 @@ export const metadata: Metadata = {
       "Un ritual interactivo en 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
     images: [
       {
-        url: "/og.jpg", // poné un 1200x630 en /public
+        url: "/og.jpg", // 1200x630 en /public
         width: 1200,
         height: 630,
         alt: "minutodesilencio – ritual y jardín 3D",
@@ -70,10 +71,17 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [{ url: "/favicon.ico" }],
-    apple: [{ url: "/apple-touch-icon.png" }], // opcional: 180x180 en /public
+    apple: [{ url: "/apple-touch-icon.png" }], // 180x180
   },
-  // Si vas a agregar un manifest PWA:
-  // manifest: "/manifest.webmanifest",
+  formatDetection: {
+    telephone: false,
+    date: false,
+    email: false,
+    address: false,
+  },
+  other: {
+    "color-scheme": "dark light",
+  },
 };
 
 export default function RootLayout({
@@ -83,8 +91,23 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className="h-full">
+      <head>
+        {/* Preload de audios para evitar corte al iniciar/cambiar de pista */}
+        <link
+          rel="preload"
+          href="/ambience-soft.mp3"
+          as="audio"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/ambience-nature.mp3"
+          as="audio"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body
-        className={`${inter.variable} antialiased`}
+        className={`${inter.variable} antialiased h-full`}
         suppressHydrationWarning
       >
         <main>{children}</main>

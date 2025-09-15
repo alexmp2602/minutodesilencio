@@ -2,82 +2,98 @@
 
 import { useEffect, useRef } from "react";
 
-/**
- * Reproduce un <audio> con fade in/out y fallback de "unlock" en el primer gesto del usuario.
- * Funciona en iOS/Safari/Chrome. Evita errores de autoplay bloqueado.
- */
+/** Audio ambiente con fade in/out y desbloqueo en primer gesto. */
 export default function AmbientAudio({
   src,
-  volume = 0.18,            // subo un poco para test; luego lo bajás si querés
+  volume = 0.18,
   fadeInMs = 1500,
   fadeOutMs = 600,
 }: {
-  src: string;               // <- obligatorio, así evitamos rutas mal puestas
+  src: string;
   volume?: number;
   fadeInMs?: number;
   fadeOutMs?: number;
 }) {
   const ref = useRef<HTMLAudioElement | null>(null);
-  const unlockRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    const a = ref.current;
-    if (!a) return;
+    // 1) Capturamos la ref una sola vez (recomendación de React/ESLint)
+    const audio = ref.current;
+    if (!audio) return;
 
-    a.volume = 0;
-    a.loop = true;
-    a.muted = false;
+    // Handlers (definidos antes para poder limpiarlos)
+    const onError = () => {
+      console.warn("[AmbientAudio] error de carga/decodificación", audio.error);
+    };
 
-    // Intento inmediato de reproducción (si ya hubo interacción previa, funciona)
-    a.play().catch(() => { /* silenciamos, probaremos el unlock */ });
-
-    // Fallback: en el primer gesto del usuario, intentamos reproducir
-    const unlock = () => {
-      a.play().catch(() => {/* último recurso, no hacemos nada */});
+    function unlock() {
+      // 2) TS feliz: volvemos a chequear por seguridad
+      if (!audio) return;
+      audio.play().catch(() => {
+        /* silenciamos */
+      });
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
-    };
-    unlockRef.current = unlock;
+    }
+
+    // Setup
+    audio.addEventListener("error", onError);
+    audio.loop = true;
+    audio.muted = false;
+    audio.volume = 0;
+
+    // Soporte MP3 y primer intento
+    const canMp3 = audio.canPlayType("audio/mpeg") !== "";
+    if (canMp3) {
+      try {
+        audio.load();
+        // 3) TS: usamos la variable local `audio`, no la ref
+        audio.play().catch(() => {});
+      } catch (err) {
+        console.warn("[AmbientAudio] play() lanzó excepción", err);
+      }
+    } else {
+      console.warn("[AmbientAudio] el navegador no reporta soporte para MP3");
+    }
+
+    // Fallback de desbloqueo (primer gesto)
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
 
     // Fade in
     const steps = Math.max(1, Math.round(fadeInMs / 100));
-    const up = setInterval(() => {
-      if (!ref.current) return;
-      const v = ref.current.volume;
-      if (v >= volume) { ref.current.volume = volume; clearInterval(up); return; }
-      ref.current.volume = Math.min(volume, v + volume / steps);
+    const up = window.setInterval(() => {
+      const v = audio.volume;
+      if (v >= volume) {
+        audio.volume = volume;
+        window.clearInterval(up);
+        return;
+      }
+      audio.volume = Math.min(volume, v + volume / steps);
     }, 100);
 
-    // Limpieza + fade out
+    // Cleanup (usa `audio` capturado: no toca `ref.current`)
     return () => {
-      clearInterval(up);
+      window.clearInterval(up);
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
+      audio.removeEventListener("error", onError);
 
-      const a2 = ref.current;
-      if (!a2) return;
-
-      const step = (a2.volume / Math.max(1, Math.round(fadeOutMs / 100)));
-      const down = setInterval(() => {
-        if (!a2) return;
-        a2.volume = Math.max(0, a2.volume - step);
-        if (a2.volume <= 0) {
-          clearInterval(down);
-          a2.pause();
+      const stepsOut = Math.max(1, Math.round(fadeOutMs / 100));
+      const step = audio.volume / stepsOut;
+      const down = window.setInterval(() => {
+        audio.volume = Math.max(0, audio.volume - step);
+        if (audio.volume <= 0) {
+          window.clearInterval(down);
+          audio.pause();
         }
       }, 100);
     };
   }, [src, volume, fadeInMs, fadeOutMs]);
 
   return (
-    <audio
-      ref={ref}
-      src={src}
-      preload="auto"
-      playsInline
-      autoPlay
-    />
+    <audio ref={ref} preload="auto" playsInline autoPlay>
+      <source src={src} type="audio/mpeg" />
+    </audio>
   );
 }

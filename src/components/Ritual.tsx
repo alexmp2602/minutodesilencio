@@ -1,10 +1,12 @@
+// src/components/Ritual.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AmbientAudio from "@/components/AmbientAudio";
 import MuteButton from "@/components/MuteButton";
+import { useAppStore } from "@/store/useAppStore";
 
-const TOTAL = 60;
+const TOTAL_SEC = 60;
 const SEGMENTS = [
   {
     to: 12,
@@ -17,34 +19,60 @@ const SEGMENTS = [
 ] as const;
 
 export default function Ritual({ onComplete }: { onComplete: () => void }) {
-  const [elapsed, setElapsed] = useState(0);
+  const { setStage } = useAppStore();
+  const startRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-  // avanzar tiempo
+  // milisegundos transcurridos (para progreso suave)
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  // setear stage al entrar
   useEffect(() => {
-    if (elapsed >= TOTAL) {
-      onComplete();
-      return;
-    }
-    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(id);
-  }, [elapsed, onComplete]);
+    setStage("ritual");
+  }, [setStage]);
 
-  const progress = Math.min(elapsed / TOTAL, 1);
+  // loop preciso con rAF
+  useEffect(() => {
+    const start = performance.now();
+    startRef.current = start;
 
-  const segment = useMemo(() => {
-    return (
-      SEGMENTS.find((seg) => elapsed < seg.to) ?? SEGMENTS[SEGMENTS.length - 1]
-    );
-  }, [elapsed]);
+    const tick = (now: number) => {
+      const ms = Math.min(now - start, TOTAL_SEC * 1000);
+      setElapsedMs(ms);
+
+      if (ms >= TOTAL_SEC * 1000) {
+        // pequeña pausa para que el último mensaje “asiente”
+        setStage("transition");
+        onComplete();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [onComplete, setStage]);
+
+  const elapsedSec = Math.floor(elapsedMs / 1000);
+  const remainingSec = Math.max(0, TOTAL_SEC - elapsedSec);
+  const progress = Math.min(elapsedMs / (TOTAL_SEC * 1000), 1);
+
+  const segment = useMemo(
+    () =>
+      SEGMENTS.find((s) => elapsedSec < s.to) ?? SEGMENTS[SEGMENTS.length - 1],
+    [elapsedSec]
+  );
 
   return (
     <section className="screen bg-radial" aria-label="Un minuto de silencio">
-      {/* audio ambiente sutil */}
+      {/* Audio ambiente sutil (modo auto: el store decide la pista) */}
       <AmbientAudio src="/ambience-soft.mp3" volume={0.15} />
       <MuteButton />
 
       <div className="ritual-wrap">
-        {/* círculo de progreso */}
+        {/* Círculo de progreso */}
         <div className="circle-wrap">
           <svg
             width="260"
@@ -73,14 +101,16 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
               style={{
                 transform: "rotate(-90deg)",
                 transformOrigin: "130px 130px",
-                transition: "stroke-dashoffset .95s linear",
+                transition: "stroke-dashoffset .12s linear", // suave sin lag
               }}
             />
           </svg>
-          <div className="circle-time">{TOTAL - elapsed}s</div>
+          <div className="circle-time" aria-live="polite">
+            {remainingSec}s
+          </div>
         </div>
 
-        {/* textos con crossfade */}
+        {/* Mensajes con crossfade */}
         <div className="crossfade" aria-live="polite">
           <h2 key={segment.title} className="crossfade-item title">
             {segment.title}

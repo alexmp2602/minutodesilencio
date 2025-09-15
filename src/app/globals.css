@@ -1,3 +1,4 @@
+/* ========== Design tokens ========== */
 :root {
   --bg: #0b0d10;
   --bg-elev: #12161b;
@@ -6,8 +7,14 @@
   --primary: #6cc5ff;
   --border: #1f2730;
   --radius: 14px;
+
+  /* motion & shadows */
+  --fade-ms: 600ms;
+  --easing: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
+/* ========== Reset base ========== */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -20,7 +27,9 @@ body {
   width: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+    Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -38,7 +47,7 @@ a {
   text-decoration: none;
 }
 
-/* Imágenes y multimedia */
+/* Media */
 img,
 video,
 canvas {
@@ -47,7 +56,13 @@ canvas {
   display: block;
 }
 
-/* fullscreen helpers */
+/* Selection */
+::selection {
+  background: color-mix(in hsl, var(--primary), transparent 70%);
+  color: #0b0d10;
+}
+
+/* ========== Layout helpers ========== */
 .screen {
   min-height: 100dvh;
   width: 100%;
@@ -55,16 +70,18 @@ canvas {
   align-items: start;
   padding: 24px;
 }
+
 .bg-radial {
   background: radial-gradient(
-    1200px 600px at 50% 30%,
-    #111a22 0%,
-    #0b0d10 55%,
-    #0b0d10 100%
-  );
+      1200px 600px at 50% 28%,
+      #111a22 0%,
+      #0b0d10 55%,
+      #0b0d10 100%
+    ),
+    var(--bg);
 }
 
-/* tipografías utilitarias */
+/* ========== Type utilities ========== */
 .h1 {
   font-size: clamp(28px, 4vw, 42px);
   font-weight: 800;
@@ -75,8 +92,13 @@ canvas {
   line-height: 1.7;
   max-width: 720px;
 }
+.text-balance {
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
 
-/* separadores */
+/* Spacing */
 .mt-8 {
   margin-top: 8px;
 }
@@ -87,13 +109,7 @@ canvas {
   margin-top: 24px;
 }
 
-/* intro */
-.intro-card {
-  place-self: center;
-  text-align: center;
-  max-width: 760px;
-  padding: 32px 24px;
-}
+/* ========== Buttons ========== */
 .btn {
   appearance: none;
   border: none;
@@ -103,28 +119,44 @@ canvas {
   padding: 12px 20px;
   border-radius: var(--radius);
   cursor: pointer;
+  transition: filter 0.12s ease-in-out;
 }
 .btn:hover {
   filter: brightness(1.05);
+}
+.btn:focus-visible {
+  outline: 2px solid color-mix(in hsl, var(--primary), white 20%);
+  outline-offset: 2px;
 }
 .hint {
   color: var(--muted);
   font-size: 14px;
 }
 
-/* ritual */
+/* ========== Intro card ========== */
+.intro-card {
+  place-self: center;
+  text-align: center;
+  max-width: 760px;
+  padding: 32px 24px;
+}
+
+/* ========== Ritual ========== */
 .ritual-wrap {
   place-self: center;
   display: grid;
   justify-items: center;
   text-align: center;
+  width: min(560px, 92vw);
 }
+
 .circle-wrap {
   position: relative;
   width: 260px;
   height: 260px;
   margin-bottom: 18px;
 }
+
 .circle-time {
   position: absolute;
   inset: 0;
@@ -134,18 +166,20 @@ canvas {
   font-variant-numeric: tabular-nums;
 }
 
-/* crossfade mensajes */
+/* Crossfade mensajes (dedupe + pulido) */
 .crossfade {
   position: relative;
-  min-height: 90px;
-  margin-top: 6px;
+  width: min(520px, 90vw);
+  min-height: 120px;
+  margin-top: 10px;
 }
 .crossfade-item {
   position: absolute;
   inset: 0;
   opacity: 0;
   transform: translateY(6px);
-  animation: crossfade-in 0.6s ease forwards;
+  animation: crossfade-in var(--fade-ms) var(--easing) forwards;
+  will-change: opacity, transform;
 }
 .crossfade-item.title {
   font-size: clamp(18px, 3vw, 24px);
@@ -157,10 +191,11 @@ canvas {
   line-height: 1.7;
 }
 
-/* animaciones */
+/* ========== Animations ========== */
 .fade-in-600 {
-  animation: fade-in 600ms ease both;
+  animation: fade-in var(--fade-ms) var(--easing) both;
 }
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -182,108 +217,63 @@ canvas {
   }
 }
 
-/* respeto a reduce motion */
+/* Reduce motion (respeta accesibilidad) */
 @media (prefers-reduced-motion: reduce) {
   .fade-in-600,
   .crossfade-item {
-    animation-duration: 1ms;
+    animation-duration: 1ms !important;
   }
   .crossfade-item {
-    transform: none;
+    transform: none !important;
   }
 }
 
-/* balanceo de líneas y control de cortes */
-.text-balance {
-  text-wrap: balance;
-  overflow-wrap: anywhere;
-  hyphens: auto;
+/* ========== Skip/Mute (ritual y jardín) ========== */
+.skip-btn,
+.mute-btn {
+  position: absolute;
+  right: 16px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: color 0.2s ease;
+  z-index: 20;
+}
+.skip-btn {
+  bottom: 16px;
+  font-size: 20px;
+}
+.mute-btn {
+  bottom: 56px;
+  font-size: 22px;
+}
+.skip-btn:hover,
+.mute-btn:hover {
+  color: rgba(255, 255, 255, 0.9);
 }
 
-/* (ya existentes, pero ajustamos el ancho de los textos del ritual) */
-.crossfade {
-  position: relative;
-  min-height: 120px;
-  margin-top: 10px;
-  width: min(520px, 90vw);
+/* ========== Jardín inmersivo (canvas fullscreen) ========== */
+.screen-immersive {
+  position: fixed;
+  inset: 0;
+  padding: 0;
+  overflow: hidden;
 }
-.crossfade-item.text {
-  color: var(--muted);
-  margin-top: 36px;
-  line-height: 1.7;
-}
-
-/* centrado del contenedor del ritual con ancho cómodo */
-.ritual-wrap {
-  place-self: center;
-  display: grid;
-  justify-items: center;
-  text-align: center;
-  width: min(560px, 92vw);
-}
-
-/* Mejor foco accesible en .btn */
-.btn:focus-visible {
-  outline: 2px solid color-mix(in hsl, var(--primary), white 20%);
-  outline-offset: 2px;
-}
-
-/* Selección de texto coherente con la paleta */
-::selection {
-  background: color-mix(in hsl, var(--primary), transparent 70%);
-  color: #0b0d10;
-}
-
-/* Canvas contenedor suave cuando esté en el jardín */
 canvas {
   border-radius: var(--radius);
 }
-
-/* Ligero refinamiento del radial */
-.bg-radial {
-  background: radial-gradient(
-      1200px 600px at 50% 28%,
-      #111a22 0%,
-      #0b0d10 55%,
-      #0b0d10 100%
-    ),
-    var(--bg);
-}
-
-.skip-btn {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 20px;
-  cursor: pointer;
-  transition: color 0.2s ease;
-}
-.skip-btn:hover {
-  color: rgba(255, 255, 255, 0.7);
-}
-
-/* === Fullscreen inmersivo para el jardín === */
-.screen-immersive {
-  position: fixed; /* cubre todo el viewport por encima del body */
-  inset: 0;
-  padding: 0; /* sin márgenes */
-  overflow: hidden; /* sin scroll */
-}
-
 .screen-immersive > canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
 }
 
-/* ==== Garden Overlay (sobre el canvas) ==== */
+/* ========== Garden Overlay (sobre el canvas) ========== */
 .garden-overlay {
   position: absolute;
   inset: 0;
-  pointer-events: none; /* deja pasar clics al canvas por defecto */
+  pointer-events: none; /* pasa clics al canvas por defecto */
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
@@ -291,16 +281,15 @@ canvas {
 }
 
 .garden-overlay .panel {
-  pointer-events: auto; /* permite interacción en el panel */
+  pointer-events: auto;
   align-self: start;
   background: color-mix(in oklab, var(--bg), white 2%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px;
   backdrop-filter: blur(6px);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-lg);
 }
-
 .garden-overlay .panel-title {
   font-weight: 700;
   margin-bottom: 8px;
@@ -377,18 +366,13 @@ canvas {
   }
 }
 
-.mute-btn {
-  position: absolute;
-  right: 16px;
-  bottom: 56px; /* un poco arriba del botón "saltear" si lo usás */
-  background: none;
-  border: none;
-  font-size: 22px;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  transition: color 0.2s ease;
-  z-index: 20;
-}
-.mute-btn:hover {
-  color: rgba(255, 255, 255, 0.9);
+/* ===== Optional progressive enhancements ===== */
+@supports not (color: color-mix(in hsl, white, black)) {
+  /* Fallbacks sutiles si color-mix no está disponible */
+  .btn:focus-visible {
+    outline-color: #8fd7ff;
+  }
+  .garden-overlay .panel {
+    background: rgba(11, 13, 16, 0.92);
+  }
 }

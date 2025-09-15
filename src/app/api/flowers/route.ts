@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+const SELECT_COLS =
+  "id, message, created_at, color, x, y, z, wilted, revived_at";
+
 export async function GET() {
   const { data, error } = await supabaseServer
     .from("flowers")
-    .select("*")
+    .select(SELECT_COLS)
     .order("created_at", { ascending: false })
     .limit(200);
 
   if (error) {
-    console.error("[flowers][GET] supabase error:", error);
+    console.error("[flowers][GET]", error);
     return NextResponse.json(
       {
         ok: false,
@@ -26,20 +29,29 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => ({}))) as unknown;
-    const msg =
-      typeof (body as Record<string, unknown>)?.message === "string"
-        ? ((body as Record<string, unknown>).message as string).slice(0, 140)
-        : null;
+    const body = (await req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+
+    const rawMsg = typeof body.message === "string" ? body.message : null;
+    const message = rawMsg ? rawMsg.slice(0, 140) : null;
+
+    const x = typeof body.x === "number" ? body.x : null;
+    const y = typeof body.y === "number" ? body.y : null;
+    const z = typeof body.z === "number" ? body.z : null;
+    const color = typeof body.color === "string" ? body.color : null;
+
+    const insertRow = { message, x, y, z, color, wilted: false };
 
     const { data, error } = await supabaseServer
       .from("flowers")
-      .insert([{ message: msg, wilted: false }])
-      .select("id, message, created_at, revived_at, wilted")
+      .insert([insertRow])
+      .select(SELECT_COLS)
       .single();
 
     if (error) {
-      console.error("[flowers][POST] supabase insert error:", error);
+      console.error("[flowers][POST]", error);
       return NextResponse.json(
         {
           ok: false,
