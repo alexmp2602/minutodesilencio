@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const SELECT_COLS =
   "id, message, created_at, color, x, y, z, wilted, revived_at";
 
