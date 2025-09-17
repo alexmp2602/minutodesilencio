@@ -9,18 +9,24 @@ export function getSupabaseServer(): SupabaseClient {
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const service = process.env.SUPABASE_SERVICE_ROLE;
 
-  if (!url) {
-    throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL");
-  }
+  if (!url) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL");
   const key = service ?? anon;
   if (!key) {
     throw new Error(
-      "Missing env: SUPABASE_SERVICE_ROLE (recommended) or NEXT_PUBLIC_SUPABASE_ANON_KEY"
+      "Missing env: SUPABASE_SERVICE_ROLE or NEXT_PUBLIC_SUPABASE_ANON_KEY"
     );
   }
 
   cached = createClient(url, key, {
+    // ⬇️ sin any: tipamos con los parámetros de `fetch`
+    global: {
+      fetch: (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1]
+      ) => fetch(input, { ...(init ?? {}), cache: "no-store" }),
+    },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
   return cached;
 }
