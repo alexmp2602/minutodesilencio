@@ -7,11 +7,15 @@ import type { Flower } from "@/lib/types";
 
 type FlowersResponse = { flowers: Flower[] };
 
+// type guard utilitario para inspeccionar JSON sin usar `any`
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null;
+
 export default function GardenOverlay() {
   const { data, isLoading, error, mutate } = useSWR<FlowersResponse>(
     "/api/flowers",
     fetcher,
-    { revalidateOnFocus: false }
+    { revalidateOnFocus: false, revalidateOnReconnect: true }
   );
 
   const [pending, setPending] = useState(false);
@@ -21,6 +25,18 @@ export default function GardenOverlay() {
   const flowers: Flower[] = data?.flowers ?? [];
   const last: Flower[] = flowers.slice(0, 8);
 
+  const isWilted = (f: Flower): boolean => {
+    const rec = f as Record<string, unknown>;
+    return typeof rec.wilted === "boolean" ? (rec.wilted as boolean) : false;
+  };
+
+  // Posición aleatoria en anillo [3..12]
+  const pickPos = () => {
+    const r = 3 + Math.random() * 9;
+    const a = Math.random() * Math.PI * 2;
+    return [Math.cos(a) * r, 0, Math.sin(a) * r] as const;
+  };
+
   async function onPlant(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErrMsg(null);
@@ -29,11 +45,6 @@ export default function GardenOverlay() {
     setPending(true);
     setMsg("");
 
-    const pickPos = () => {
-      const r = 3 + Math.random() * 9;
-      const a = Math.random() * Math.PI * 2;
-      return [Math.cos(a) * r, 0, Math.sin(a) * r] as const;
-    };
     const [px, py, pz] = pickPos();
 
     const optimistic: Flower = {
@@ -47,18 +58,38 @@ export default function GardenOverlay() {
 
     try {
       await mutate(
-        async (current?: { flowers: Flower[] }) => {
+        async (current?: FlowersResponse): Promise<FlowersResponse> => {
           const res = await fetch("/api/flowers", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message, x: px, y: py, z: pz }),
           });
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(json?.error ?? "Error al plantar");
 
-          const real: Flower | null = json?.flower ?? null;
-          const realWithPos = real
-            ? ({ ...real, x: px, y: py, z: pz } as Flower)
+          let apiError = `HTTP ${res.status}`;
+          let json: unknown = null;
+          try {
+            json = await res.json();
+            if (isRecord(json) && typeof json.error === "string") {
+              apiError = json.error;
+            }
+          } catch {
+            // si no hay JSON, mantenemos el mensaje por defecto
+          }
+          if (!res.ok) throw new Error(apiError);
+
+          const real: unknown = isRecord(json) ? json.flower : null;
+          const realIsFlower =
+            isRecord(real) &&
+            typeof real.id === "string" &&
+            "created_at" in real;
+
+          const realWithPos: Flower | null = realIsFlower
+            ? ({
+                ...(real as Record<string, unknown>),
+                x: px,
+                y: py,
+                z: pz,
+              } as Flower)
             : null;
 
           const prev = current?.flowers ?? [];
@@ -70,9 +101,9 @@ export default function GardenOverlay() {
           rollbackOnError: true,
           revalidate: true,
           populateCache: (
-            result: { flowers: Flower[] },
-            current?: { flowers: Flower[] }
-          ) => {
+            result: FlowersResponse,
+            current?: FlowersResponse
+          ): FlowersResponse => {
             const posById = new Map(
               (current?.flowers ?? []).map((f) => [
                 f.id,
@@ -98,12 +129,6 @@ export default function GardenOverlay() {
     }
   }
 
-  // util: lee "wilted" si existe (no usamos any)
-  const isWilted = (f: Flower): boolean => {
-    const rec = f as Record<string, unknown>;
-    return typeof rec.wilted === "boolean" ? (rec.wilted as boolean) : false;
-  };
-
   return (
     <div className="garden-overlay" aria-live="polite">
       {/* Panel izquierdo: plantar */}
@@ -116,6 +141,7 @@ export default function GardenOverlay() {
           </label>
           <input
             id="plant-msg"
+            name="message"
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
             placeholder="Mensaje (opcional, máx. 140)"
@@ -124,7 +150,13 @@ export default function GardenOverlay() {
             autoComplete="off"
             disabled={pending}
           />
-          <button className="btn" aria-disabled={pending} disabled={pending}>
+          <button
+            type="submit"
+            className="btn"
+            aria-disabled={pending}
+            disabled={pending}
+            title="Plantar una flor"
+          >
             {pending ? "Plantando…" : "Plantar"}
           </button>
         </div>
