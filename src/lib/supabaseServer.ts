@@ -1,31 +1,36 @@
+// src/lib/supabaseServer.ts
+import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let cached: SupabaseClient | null = null;
 
+/**
+ * Cliente de Supabase sólo para el servidor (Node runtime).
+ * Requiere:
+ * - SUPABASE_URL
+ * - SUPABASE_SERVICE_ROLE   (o, en su defecto, NEXT_PUBLIC_SUPABASE_ANON_KEY)
+ */
 export function getSupabaseServer(): SupabaseClient {
   if (cached) return cached;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const service = process.env.SUPABASE_SERVICE_ROLE;
+  const url = process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url) throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL");
-  const key = service ?? anon;
-  if (!key) {
+  if (!url) {
+    throw new Error("Missing env: SUPABASE_URL");
+  }
+  if (!serviceKey) {
     throw new Error(
-      "Missing env: SUPABASE_SERVICE_ROLE or NEXT_PUBLIC_SUPABASE_ANON_KEY"
+      "Missing env: SUPABASE_SERVICE_ROLE (o NEXT_PUBLIC_SUPABASE_ANON_KEY)"
     );
   }
 
-  cached = createClient(url, key, {
-    // ⬇️ sin any: tipamos con los parámetros de `fetch`
-    global: {
-      fetch: (
-        input: Parameters<typeof fetch>[0],
-        init?: Parameters<typeof fetch>[1]
-      ) => fetch(input, { ...(init ?? {}), cache: "no-store" }),
-    },
+  cached = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Importante: NO sobreescribimos fetch. Dejamos el nativo de Node/Vercel.
+    global: { fetch },
   });
 
   return cached;
