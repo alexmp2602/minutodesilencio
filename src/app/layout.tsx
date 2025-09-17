@@ -1,3 +1,4 @@
+// app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -69,10 +70,21 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true },
   },
+
+  // —— Favicons / manifest ——
   icons: {
-    icon: [{ url: "/favicon.ico" }],
-    apple: [{ url: "/apple-touch-icon.png" }], // 180x180
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    other: [
+      { rel: "mask-icon", url: "/safari-pinned-tab.svg", color: "#8ad1ff" },
+    ],
   },
+  manifest: "/site.webmanifest",
+
   formatDetection: {
     telephone: false,
     date: false,
@@ -92,18 +104,18 @@ export default function RootLayout({
   return (
     <html lang="es" className="h-full">
       <head>
-        {/* Preload de audios para evitar corte al iniciar/cambiar de pista */}
+        {/* Preload de audios: tipo declarado para evitar warnings */}
         <link
           rel="preload"
           href="/ambience-soft.mp3"
           as="audio"
-          crossOrigin="anonymous"
+          type="audio/mpeg"
         />
         <link
           rel="preload"
           href="/ambience-nature.mp3"
           as="audio"
-          crossOrigin="anonymous"
+          type="audio/mpeg"
         />
       </head>
       <body
