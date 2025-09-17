@@ -1,3 +1,4 @@
+// src/app/api/flowers/route.ts
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseServer";
 
@@ -35,22 +36,36 @@ function netCause(c: unknown): NetCause {
   };
 }
 
-function errJson(e: unknown, where: string, status = 500) {
-  const err = e instanceof Error ? e : new Error(String(e));
-  const cause = netCause((err as { cause?: unknown }).cause);
+// Elige el mejor mensaje legible para Error/PostgrestError/{ error: ... }/etc.
+function pickMessage(e: unknown): string {
+  if (e instanceof Error) return e.message || "Error";
 
-  // mensaje legible siempre (evita [object Object])
-  let msg = err.message || "Error";
-  if (isRecord(e) && typeof e.error === "string") {
-    msg = e.error;
-  } else if (
-    isRecord(e) &&
-    isRecord(e.error) &&
-    typeof e.error.message === "string"
-  ) {
-    msg = e.error.message;
+  if (isRecord(e)) {
+    // Nuestra API: { error: string }
+    if (typeof e.error === "string") return e.error;
+
+    // Algunas APIs: { error: { message } }
+    if (isRecord(e.error) && typeof e.error.message === "string") {
+      return e.error.message;
+    }
+
+    // Postgrest/Supabase
+    if (typeof e.message === "string") return e.message;
+    if (typeof e.hint === "string") return e.hint;
+    if (typeof e.details === "string") return e.details;
+    if (typeof e.code === "string") return `code ${e.code}`;
   }
 
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
+}
+
+function errJson(e: unknown, where: string, status = 500) {
+  const cause = netCause((e as { cause?: unknown })?.cause);
+  const msg = pickMessage(e);
   return NextResponse.json(
     { ok: false, error: `${where}: ${msg}`, cause },
     { status }
@@ -85,9 +100,13 @@ export async function POST(req: Request) {
         ? body.message.trim().slice(0, 140)
         : null;
 
-    const x = typeof body.x === "number" ? body.x : null;
-    const y = typeof body.y === "number" ? body.y : null;
-    const z = typeof body.z === "number" ? body.z : null;
+    // Posición opcional (si no viene, queda null)
+    const numOrNull = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) ? v : null;
+
+    const x = numOrNull(body.x);
+    const y = numOrNull(body.y);
+    const z = numOrNull(body.z);
 
     const supabase = getSupabaseServer();
     const { data, error } = await supabase
