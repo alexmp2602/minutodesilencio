@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseServer";
 
-// Ejecutar siempre en Node (no Edge) y sin cache agresiva
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const preferredRegion = "home";
+export const revalidate = 0;
 
 const SELECT_COLS =
   "id, message, created_at, revived_at, wilted, color, x, y, z";
 
-// --- utils de tipos/guards ---
 type NetCause = Partial<{
   code: string | number;
   errno: string | number;
@@ -39,7 +38,6 @@ function errJson(e: unknown, where: string, status = 500) {
   const err = e instanceof Error ? e : new Error(String(e));
   const cause = netCause((err as { cause?: unknown }).cause);
 
-  // mensaje legible (evita [object Object])
   let msg = err.message || "Error";
   if (isRecord(e) && typeof e.error === "string") msg = e.error;
   else if (
@@ -49,7 +47,6 @@ function errJson(e: unknown, where: string, status = 500) {
   )
     msg = e.error.message;
 
-  // algo de visibilidad en logs de Vercel
   console.error(`[api][${where}]`, { msg, cause });
 
   return NextResponse.json(
@@ -58,7 +55,6 @@ function errJson(e: unknown, where: string, status = 500) {
   );
 }
 
-// ---- GET ----
 export async function GET() {
   try {
     const supabase = getSupabaseServer();
@@ -68,20 +64,22 @@ export async function GET() {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    if (error) return errJson(error, "flowers.GET");
-    return NextResponse.json({ ok: true, flowers: data ?? [] });
-  } catch (e: unknown) {
-    return errJson(e, "flowers.GET");
+    if (error) return errJson(error, "flowers.GET", 500);
+    return NextResponse.json(
+      { ok: true, flowers: data ?? [] },
+      { status: 200 }
+    );
+  } catch (e) {
+    return errJson(e, "flowers.GET", 500);
   }
 }
 
-// ---- POST ----
 export async function POST(req: Request) {
   try {
     const raw = await req.json().catch(() => ({}));
     const body = (isRecord(raw) ? raw : {}) as Record<string, unknown>;
 
-    const msg =
+    const message =
       typeof body.message === "string"
         ? body.message.trim().slice(0, 140)
         : null;
@@ -90,16 +88,21 @@ export async function POST(req: Request) {
     const y = typeof body.y === "number" ? body.y : null;
     const z = typeof body.z === "number" ? body.z : null;
 
+    const color =
+      typeof body.color === "string" && body.color.trim()
+        ? body.color.trim()
+        : null;
+
     const supabase = getSupabaseServer();
     const { data, error } = await supabase
       .from("flowers")
-      .insert([{ message: msg, x, y, z, wilted: false }])
+      .insert([{ message, x, y, z, color, wilted: false }])
       .select(SELECT_COLS)
       .single();
 
-    if (error) return errJson(error, "flowers.POST");
+    if (error) return errJson(error, "flowers.POST", 500);
     return NextResponse.json({ ok: true, flower: data }, { status: 201 });
-  } catch (e: unknown) {
+  } catch (e) {
     return errJson(e, "flowers.POST", 500);
   }
 }

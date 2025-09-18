@@ -1,69 +1,100 @@
-// src/components/Intro.tsx
 "use client";
 
 import { useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import type React from "react";
 
-type StyleWithVars = React.CSSProperties & { ["--fade-ms"]?: string };
+type CSSVars = React.CSSProperties & { ["--fade-ms"]?: string };
+type Props = { onStart: () => void };
 
-export default function Intro({ onStart }: { onStart: () => void }) {
+export default function Intro({ onStart }: Props) {
   const { setStage } = useAppStore();
 
   useEffect(() => {
-    setStage("intro");
-  }, [setStage]);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") onStart();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onStart]);
 
-  // Duración local de la animación de entrada
-  const styleVars: StyleWithVars = { ["--fade-ms"]: "1200ms" };
+  const style: CSSVars = { ["--fade-ms"]: "1200ms" };
 
   return (
     <section
       className="screen bg-radial place-items-center allow-motion"
       role="region"
       aria-labelledby="intro-title"
-      style={styleVars}
+      aria-describedby="intro-desc"
+      style={style}
     >
-      {/* halo animado propio, sin Tailwind */}
-      <div aria-hidden="true" className="intro-halo" />
+      <div aria-hidden="true" className="intro-portal" />
 
       <div className="intro-card fade-in-600 text-center">
         <h1 id="intro-title" className="h1">
           minutodesilencio
         </h1>
-        <p className="muted mt-8 text-balance">
-          Un breve ritual para despedir y recordar.
+        <p id="intro-desc" className="muted mt-8 text-balance">
+          Antes de entrar, esperá un minuto en memoria de lo que ya no está.
           <br />
-          Al finalizar, ingresarás a un jardín digital.
+          Al finalizar, vas a acceder al jardín digital.
         </p>
         <button
           className="btn mt-16"
-          onClick={onStart}
-          aria-label="Comenzar ritual de un minuto"
+          onClick={() => {
+            setStage("ritual");
+            onStart();
+          }}
+          aria-label="Continuar al ritual de un minuto"
         >
           Comenzar
         </button>
       </div>
 
-      {/* estilos scoped para la animación del halo */}
       <style jsx>{`
-        .intro-halo {
+        .intro-portal {
           position: absolute;
           inset: 0;
           pointer-events: none;
         }
-        .intro-halo::before {
+        .intro-portal::before,
+        .intro-portal::after {
           content: "";
           position: absolute;
           left: 50%;
-          top: -12rem; /* no tapa el centro */
-          width: min(70vw, 52rem);
-          height: min(70vw, 52rem);
           transform: translateX(-50%);
           border-radius: 9999px;
-          filter: blur(140px);
+          filter: blur(100px);
+          will-change: transform, opacity;
+        }
+        .intro-portal::before {
+          top: -12rem;
+          width: min(70vw, 52rem);
+          height: min(70vw, 52rem);
           background: rgba(108, 197, 255, 0.12);
           animation: halo-pulse 4.2s ease-in-out infinite;
+        }
+        .intro-portal::after {
+          top: 18vh;
+          width: min(48vw, 32rem);
+          height: min(48vw, 32rem);
+          filter: none;
+          background: radial-gradient(
+              closest-side,
+              rgba(108, 197, 255, 0.16),
+              transparent 65%
+            ),
+            radial-gradient(
+              closest-side,
+              rgba(108, 197, 255, 0.08),
+              transparent 72%
+            ),
+            radial-gradient(
+              closest-side,
+              rgba(108, 197, 255, 0.05),
+              transparent 80%
+            );
+          animation: ring-breathe 6s var(--easing) infinite;
         }
         @keyframes halo-pulse {
           0%,
@@ -76,9 +107,20 @@ export default function Intro({ onStart }: { onStart: () => void }) {
             transform: translateX(-50%) scale(1.06);
           }
         }
-
+        @keyframes ring-breathe {
+          0%,
+          100% {
+            opacity: 0.7;
+            transform: translateX(-50%) scale(1);
+          }
+          50% {
+            opacity: 1;
+            transform: translateX(-50%) scale(1.04);
+          }
+        }
         @media (prefers-reduced-motion: reduce) {
-          :global(.allow-motion) .intro-halo::before {
+          :global(.allow-motion) .intro-portal::before,
+          :global(.allow-motion) .intro-portal::after {
             animation-duration: 1200ms;
           }
         }

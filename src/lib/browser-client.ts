@@ -2,24 +2,41 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-let _client: SupabaseClient | null = null;
+declare global {
+  interface Window {
+    __supabase?: SupabaseClient;
+  }
+}
 
-export function getSupabaseBrowserClient() {
-  if (_client) return _client;
+let client: SupabaseClient | undefined;
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+export function getSupabaseBrowserClient(): SupabaseClient {
+  if (typeof window !== "undefined" && window.__supabase)
+    return window.__supabase;
+  if (client) return client;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
   if (!url || !anon) {
     throw new Error(
       "Faltan variables NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY"
     );
   }
-
   if (url.endsWith("/")) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL no debe terminar con "/"');
   }
 
-  _client = createClient(url, anon);
-  return _client;
+  const c = createClient(url, anon, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
+  });
+
+  if (typeof window !== "undefined") window.__supabase = c;
+  else client = c;
+
+  return c;
 }

@@ -7,7 +7,6 @@ import type { Flower } from "@/lib/types";
 
 type FlowersResponse = { flowers: Flower[] };
 
-// type guard utilitario para inspeccionar JSON sin usar `any`
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
 
@@ -22,15 +21,14 @@ export default function GardenOverlay() {
   const [msg, setMsg] = useState("");
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
-  const flowers: Flower[] = data?.flowers ?? [];
-  const last: Flower[] = flowers.slice(0, 8);
+  const flowers = data?.flowers ?? [];
+  const last = flowers.slice(0, 8);
 
   const isWilted = (f: Flower): boolean => {
-    const rec = f as Record<string, unknown>;
-    return typeof rec.wilted === "boolean" ? (rec.wilted as boolean) : false;
+    const r = f as Record<string, unknown>;
+    return typeof r.wilted === "boolean" ? (r.wilted as boolean) : false;
   };
 
-  // Posición aleatoria en anillo [3..12]
   const pickPos = () => {
     const r = 3 + Math.random() * 9;
     const a = Math.random() * Math.PI * 2;
@@ -39,17 +37,18 @@ export default function GardenOverlay() {
 
   async function onPlant(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setErrMsg(null);
+    if (pending) return;
 
+    setErrMsg(null);
     const message = msg.trim().slice(0, 140) || undefined;
     setPending(true);
     setMsg("");
 
     const [px, py, pz] = pickPos();
-
     const optimistic: Flower = {
       id: `temp-${Date.now()}`,
       message: message ?? null,
+      color: null,
       created_at: new Date().toISOString(),
       x: px,
       y: py,
@@ -72,18 +71,17 @@ export default function GardenOverlay() {
             if (isRecord(json) && typeof json.error === "string") {
               apiError = json.error;
             }
-          } catch {
-            // si no hay JSON, mantenemos el mensaje por defecto
-          }
+          } catch {}
+
           if (!res.ok) throw new Error(apiError);
 
           const real: unknown = isRecord(json) ? json.flower : null;
-          const realIsFlower =
+          const ok =
             isRecord(real) &&
             typeof real.id === "string" &&
             "created_at" in real;
 
-          const realWithPos: Flower | null = realIsFlower
+          const withPos: Flower | null = ok
             ? ({
                 ...(real as Record<string, unknown>),
                 x: px,
@@ -93,17 +91,14 @@ export default function GardenOverlay() {
             : null;
 
           const prev = current?.flowers ?? [];
-          const next = [realWithPos, ...prev].filter(Boolean) as Flower[];
+          const next = [withPos, ...prev].filter(Boolean) as Flower[];
           return { flowers: next };
         },
         {
           optimisticData: { flowers: [optimistic, ...(data?.flowers ?? [])] },
           rollbackOnError: true,
           revalidate: true,
-          populateCache: (
-            result: FlowersResponse,
-            current?: FlowersResponse
-          ): FlowersResponse => {
+          populateCache: (result, current) => {
             const posById = new Map(
               (current?.flowers ?? []).map((f) => [
                 f.id,
@@ -131,77 +126,86 @@ export default function GardenOverlay() {
 
   return (
     <div className="garden-overlay" aria-live="polite">
-      {/* Panel izquierdo: plantar */}
-      <form className="panel" onSubmit={onPlant} aria-busy={pending}>
-        <div className="panel-title">Plantar una flor</div>
-
-        <div className="row">
-          <label htmlFor="plant-msg" className="sr-only">
-            Mensaje (opcional, 140 máx.)
-          </label>
-          <input
-            id="plant-msg"
-            name="message"
-            value={msg}
-            onChange={(e) => setMsg(e.target.value)}
-            placeholder="Mensaje (opcional, máx. 140)"
-            maxLength={140}
-            className="input"
-            autoComplete="off"
-            disabled={pending}
-          />
-          <button
-            type="submit"
-            className="btn"
-            aria-disabled={pending}
-            disabled={pending}
-            title="Plantar una flor"
-          >
-            {pending ? "Plantando…" : "Plantar"}
-          </button>
-        </div>
-
-        <div className="hint">
-          Tu mensaje aparecerá sobre una flor. También podés plantar en
-          silencio.
-        </div>
-
-        {errMsg && (
-          <div role="alert" className="mt-16" style={{ color: "#ffadad" }}>
-            {errMsg}
+      <div className="col-left">
+        <div className="panel panel-thin">
+          <div className="panel-title">
+            Últimas flores {isLoading ? "…" : `(${flowers.length})`}
           </div>
-        )}
-      </form>
 
-      {/* Panel derecho: últimas flores */}
-      <div className="panel">
-        <div className="panel-title">
-          Últimas flores {isLoading ? "…" : `(${flowers.length})`}
-        </div>
-
-        {error && (
-          <div role="alert" className="mt-8" style={{ color: "#ffadad" }}>
-            No se pudieron cargar las flores.
-          </div>
-        )}
-
-        <ul className="list">
-          {last.length === 0 && !isLoading && (
-            <li className="item muted">Aún no hay flores plantadas.</li>
+          {error && (
+            <div role="alert" className="mt-8" style={{ color: "#ffadad" }}>
+              No se pudieron cargar las flores.
+            </div>
           )}
 
-          {last.map((f) => (
-            <li key={f.id} className="item">
-              <span className={`dot ${isWilted(f) ? "wilted" : "alive"}`} />
-              <span className="msg">
-                {f.message ? f.message : <em className="muted">Sin mensaje</em>}
-              </span>
-              <time className="ts">
-                {f.created_at ? new Date(f.created_at).toLocaleString() : "—"}
-              </time>
-            </li>
-          ))}
-        </ul>
+          <ul className="list list-compact" aria-busy={isLoading}>
+            {last.length === 0 && !isLoading && (
+              <li className="item muted">Aún no hay flores plantadas.</li>
+            )}
+            {last.map((f) => (
+              <li key={f.id} className="item">
+                <span className={`dot ${isWilted(f) ? "wilted" : "alive"}`} />
+                <span className="msg">
+                  {f.message ? (
+                    f.message
+                  ) : (
+                    <em className="muted">Sin mensaje</em>
+                  )}
+                </span>
+                <time className="ts">
+                  {f.created_at
+                    ? new Date(f.created_at).toLocaleString(undefined, {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                </time>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <form
+          className="panel panel-plant"
+          onSubmit={onPlant}
+          aria-busy={pending}
+        >
+          <div className="panel-title">Plantar una flor</div>
+          <div className="row">
+            <label htmlFor="plant-msg" className="sr-only">
+              Mensaje (opcional, 140 máx.)
+            </label>
+            <input
+              id="plant-msg"
+              name="message"
+              value={msg}
+              onChange={(e) => setMsg(e.target.value)}
+              placeholder="Mensaje (opcional, máx. 140)"
+              maxLength={140}
+              className="input input-sm"
+              autoComplete="off"
+              disabled={pending}
+            />
+            <button
+              type="submit"
+              className="btn btn-sm"
+              aria-disabled={pending}
+              disabled={pending}
+              title="Plantar una flor"
+            >
+              {pending ? "Plantando…" : "Plantar"}
+            </button>
+          </div>
+          <div className="hint">Podés plantar en silencio.</div>
+          {errMsg && (
+            <div role="alert" className="mt-16" style={{ color: "#ffadad" }}>
+              {errMsg}
+            </div>
+          )}
+        </form>
       </div>
     </div>
   );

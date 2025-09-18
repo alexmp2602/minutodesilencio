@@ -3,14 +3,12 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
-// Fuente variable con display swap
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-inter",
 });
 
-// Viewport seguro (notch) + color de barra
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -26,12 +24,9 @@ const siteUrl = "https://minutodesilencio.vercel.app";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: "minutodesilencio",
-  title: {
-    default: "minutodesilencio",
-    template: "%s · minutodesilencio",
-  },
+  title: { default: "minutodesilencio", template: "%s · minutodesilencio" },
   description:
-    "Un ritual interactivo en 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
+    "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
   keywords: [
     "minutodesilencio",
     "ritual",
@@ -48,10 +43,10 @@ export const metadata: Metadata = {
     siteName: "minutodesilencio",
     title: "minutodesilencio",
     description:
-      "Un ritual interactivo en 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
+      "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
     images: [
       {
-        url: "/og.jpg", // 1200x630 en /public
+        url: "/og.jpg",
         width: 1200,
         height: 630,
         alt: "minutodesilencio – ritual y jardín 3D",
@@ -62,7 +57,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "minutodesilencio",
     description:
-      "Un ritual interactivo en 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
+      "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
     images: ["/og.jpg"],
   },
   robots: {
@@ -70,8 +65,6 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true },
   },
-
-  // —— Favicons / manifest ——
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "any" },
@@ -84,16 +77,13 @@ export const metadata: Metadata = {
     ],
   },
   manifest: "/site.webmanifest",
-
   formatDetection: {
     telephone: false,
     date: false,
     email: false,
     address: false,
   },
-  other: {
-    "color-scheme": "dark light",
-  },
+  other: { "color-scheme": "dark light" },
 };
 
 export default function RootLayout({
@@ -102,21 +92,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className="h-full">
+    <html lang="es" dir="ltr" className="h-full">
       <head>
-        {/* Preload de audios: tipo declarado para evitar warnings */}
         <link
           rel="preload"
           href="/ambience-soft.mp3"
           as="audio"
           type="audio/mpeg"
+          crossOrigin="anonymous"
         />
         <link
           rel="preload"
           href="/ambience-nature.mp3"
           as="audio"
           type="audio/mpeg"
+          crossOrigin="anonymous"
         />
+        <link rel="preload" href="/og.jpg" as="image" type="image/jpeg" />
       </head>
       <body
         className={`${inter.variable} antialiased h-full`}

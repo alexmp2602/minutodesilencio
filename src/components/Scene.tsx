@@ -9,54 +9,48 @@ import Ground from "./Ground";
 import Flowers from "./Flowers";
 
 export default function Scene() {
-  // DPR adaptativo: si el rendimiento baja, caemos a 1; si mejora, subimos a 2
   const [dpr, setDpr] = useState<[number, number] | number>([1, 2]);
+  const [grabbing, setGrabbing] = useState(false);
 
-  // Colores/fog memoizados para no recalcular
   const fogColor = useMemo(() => new THREE.Color("#0a0f0a"), []);
   const clearColor = "#0b0d10";
 
   return (
     <Canvas
+      className={grabbing ? "canvas-grabbing" : "canvas-grab"}
       shadows
       dpr={dpr}
       camera={{ position: [4, 3, 4], fov: 50, near: 0.1, far: 200 }}
       style={{ width: "100%", height: "100%" }}
       onCreated={({ gl, scene }) => {
-        // Color de fondo + gestión de color/tonemapping
         gl.setClearColor(clearColor, 1);
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.0;
-
-        // Sombras suaves
         gl.shadowMap.enabled = true;
         gl.shadowMap.type = THREE.PCFSoftShadowMap;
-
-        // Niebla sutil
         scene.fog = new THREE.Fog(fogColor, 18, 42);
       }}
+      onPointerDown={(e) => {
+        if (e.button === 2) setGrabbing(true);
+      }}
+      onPointerUp={() => setGrabbing(false)}
+      onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Monitor de performance: ajusta DPR automáticamente */}
       <PerformanceMonitor
-        onDecline={() => setDpr(1)} // baja calidad si cae el FPS
-        onIncline={() => setDpr([1, 2])} // vuelve a adaptativo
+        onDecline={() => setDpr(1)}
+        onIncline={() => setDpr([1, 2])}
       />
 
-      {/* Iluminación */}
       <ambientLight intensity={0.35} />
-      <hemisphereLight
-        groundColor={"#222a22"}
-        color={"#cfd6d9"}
-        intensity={0.35}
-      />
+      <hemisphereLight groundColor="#222a22" color="#cfd6d9" intensity={0.35} />
       <directionalLight
         position={[5, 6, 3]}
         intensity={1.05}
         castShadow
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
-        shadow-bias={-0.0006} // reduce shadow acne
+        shadow-bias={-0.0006}
         shadow-camera-near={1}
         shadow-camera-far={30}
         shadow-camera-left={-12}
@@ -66,13 +60,11 @@ export default function Scene() {
       />
       <directionalLight position={[-5, 3, -2]} intensity={0.25} />
 
-      {/* Suelo / escena */}
       <Suspense fallback={null}>
         <Ground />
         <Flowers />
       </Suspense>
 
-      {/* Cámara / Controles (estilo theseabetween, sin pan) */}
       <OrbitControls
         enableDamping
         dampingFactor={0.08}
@@ -85,7 +77,6 @@ export default function Scene() {
         maxDistance={16}
       />
 
-      {/* Efectos postproceso */}
       <EffectComposer multisampling={0}>
         <Bloom
           mipmapBlur

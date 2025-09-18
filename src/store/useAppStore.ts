@@ -11,6 +11,6 @@ type AppState = {
 export const useAppStore = create<AppState>((set) => ({
   stage: "intro",
   muted: false,
-  setStage: (stage) => set({ stage }),
+  setStage: (next) => set((s) => (s.stage === next ? s : { stage: next })), // evita re-renders en bucle
   toggleMute: () => set((s) => ({ muted: !s.muted })),
 }));

@@ -1,4 +1,3 @@
-// src/components/Flowers.tsx
 "use client";
 
 import * as THREE from "three";
@@ -16,7 +15,6 @@ import {
 
 type FlowersResponse = { flowers: Flower[] };
 
-// ---------- utils ----------
 function seedFromString(str: string) {
   let h = 1779033703 ^ str.length;
   for (let i = 0; i < str.length; i++) {
@@ -30,6 +28,7 @@ function seedFromString(str: string) {
     return (t & 0xffff) / 0xffff;
   };
 }
+
 function colorFromId(id: string) {
   const rnd = seedFromString(id);
   const h = rnd();
@@ -50,6 +49,7 @@ function colorFromId(id: string) {
   const m = v - c;
   return new THREE.Color(r + m, g + m, b + m);
 }
+
 function positionFor(f: Flower): [number, number, number] {
   const has = f as Record<string, unknown>;
   if (
@@ -64,6 +64,7 @@ function positionFor(f: Flower): [number, number, number] {
   const a = rnd() * Math.PI * 2;
   return [Math.cos(a) * r, 0, Math.sin(a) * r];
 }
+
 function useAppearFactor(duration = 700) {
   const [k, setK] = useState(0);
   useEffect(() => {
@@ -80,12 +81,13 @@ function useAppearFactor(duration = 700) {
   }, [duration]);
   return k;
 }
+
 function useGlowTexture() {
   return useMemo(() => {
     const s = 256;
     const c = document.createElement("canvas");
     c.width = c.height = s;
-    const ctx = c.getContext("2d")!;
+    const ctx = c.getContext("2d") as CanvasRenderingContext2D;
     const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
     g.addColorStop(0, "rgba(255,255,255,1)");
     g.addColorStop(0.5, "rgba(255,255,255,0.25)");
@@ -100,9 +102,7 @@ function useGlowTexture() {
   }, []);
 }
 
-// ---------- subcomponente para nuevas con glow ----------
 function NewBloom({
-  id,
   pos,
   stemH,
   bloomR,
@@ -123,11 +123,12 @@ function NewBloom({
   const k = useAppearFactor(700);
   const pulse = Math.sin(k * Math.PI);
   const s = Math.max(0.0001, bloomR * k);
+  const y = stemH + s * 1.1 + Math.sin((k + 0.5) * Math.PI) * 0.02;
 
   return (
-    <group key={`new-${id}`}>
+    <group>
       <mesh
-        position={[pos[0], stemH + s * 1.1, pos[2]]}
+        position={[pos[0], y, pos[2]]}
         scale={[s, s, s]}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -148,7 +149,7 @@ function NewBloom({
         />
       </mesh>
       <Billboard
-        position={[pos[0], stemH + s * 1.1, pos[2]]}
+        position={[pos[0], y, pos[2]]}
         follow={false}
         lockX
         lockY
@@ -170,15 +171,15 @@ function NewBloom({
   );
 }
 
-// ---------- componente principal ----------
-const CAP = 512; // capacidad fija de buffer para evitar el error de WebGL
+const CAP = 512;
 
 export default function Flowers() {
   const { data } = useSWR<FlowersResponse>("/api/flowers", fetcher, {
     revalidateOnFocus: false,
   });
+
   const [hoverId, setHoverId] = useState<string | null>(null);
-  useCursor(!!hoverId);
+  useCursor(Boolean(hoverId));
 
   const seenRef = useRef<Set<string>>(new Set());
   const initRef = useRef(false);
@@ -203,11 +204,8 @@ export default function Flowers() {
         typeof colorStr === "string" && colorStr
           ? new THREE.Color(colorStr)
           : colorFromId(f.id);
-      let isNew = false;
-      if (initRef.current && !seenRef.current.has(f.id)) {
-        isNew = true;
-        seenRef.current.add(f.id);
-      }
+      const isNew = initRef.current && !seenRef.current.has(f.id);
+      if (isNew) seenRef.current.add(f.id);
       return { f, pos, stemH, bloomR, color, isNew };
     });
   }, [data?.flowers]);
@@ -218,10 +216,9 @@ export default function Flowers() {
 
   return (
     <>
-      {/* Tallos (instanciados) */}
       <Instances limit={CAP} range={stems.length}>
         <cylinderGeometry args={[0.012, 0.02, 1, 6]} />
-        <meshStandardMaterial color={"#2c6f2c"} roughness={0.95} />
+        <meshStandardMaterial color="#2c6f2c" roughness={0.95} />
         {stems.map(({ f, pos, stemH }) => (
           <Instance
             key={`stem-${f.id}`}
@@ -239,7 +236,6 @@ export default function Flowers() {
         ))}
       </Instances>
 
-      {/* Corolas viejas (instanciadas) */}
       <Instances limit={CAP} range={oldBlooms.length}>
         <sphereGeometry args={[1, 16, 16]} />
         <meshStandardMaterial roughness={0.6} metalness={0.05} />
@@ -248,7 +244,7 @@ export default function Flowers() {
             key={`bloom-${f.id}`}
             position={[pos[0], stemH + bloomR * 1.1, pos[2]]}
             scale={[bloomR, bloomR, bloomR]}
-            color={color.getStyle()} // pasar como string para máxima compat
+            color={color.getStyle()}
             onPointerOver={(e) => {
               e.stopPropagation();
               setHoverId(f.id);
@@ -261,7 +257,6 @@ export default function Flowers() {
         ))}
       </Instances>
 
-      {/* Corolas nuevas (no instanciadas, con glow) */}
       {newBlooms.map(({ f, pos, stemH, bloomR, color }) => (
         <NewBloom
           key={`new-${f.id}`}
@@ -276,7 +271,6 @@ export default function Flowers() {
         />
       ))}
 
-      {/* Tooltips */}
       {items.map(({ f, pos, stemH, bloomR }) =>
         f.message ? (
           <Html
