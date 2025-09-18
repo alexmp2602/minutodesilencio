@@ -22,7 +22,7 @@ export default function Intro({ onStart }: Props) {
 
   return (
     <section
-      className="screen bg-radial place-items-center allow-motion"
+      className="screen bg-radial place-items-center allow-motion intro-root"
       role="region"
       aria-labelledby="intro-title"
       aria-describedby="intro-desc"
@@ -52,11 +52,28 @@ export default function Intro({ onStart }: Props) {
       </div>
 
       <style jsx>{`
+        /* evita que el blur del halo genere scroll vertical */
+        .intro-root {
+          overflow: hidden;
+        }
+        @supports (overflow: clip) {
+          .intro-root {
+            overflow: clip;
+          }
+        }
+
         .intro-portal {
           position: absolute;
           inset: 0;
           pointer-events: none;
+          overflow: hidden;
         }
+        @supports (overflow: clip) {
+          .intro-portal {
+            overflow: clip;
+          }
+        }
+
         .intro-portal::before,
         .intro-portal::after {
           content: "";
@@ -96,6 +113,7 @@ export default function Intro({ onStart }: Props) {
             );
           animation: ring-breathe 6s var(--easing) infinite;
         }
+
         @keyframes halo-pulse {
           0%,
           100% {
@@ -118,6 +136,7 @@ export default function Intro({ onStart }: Props) {
             transform: translateX(-50%) scale(1.04);
           }
         }
+
         @media (prefers-reduced-motion: reduce) {
           :global(.allow-motion) .intro-portal::before,
           :global(.allow-motion) .intro-portal::after {

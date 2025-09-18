@@ -199,7 +199,6 @@ export default function GardenOverlay() {
               {pending ? "Plantando…" : "Plantar"}
             </button>
           </div>
-          <div className="hint">Podés plantar en silencio.</div>
           {errMsg && (
             <div role="alert" className="mt-16" style={{ color: "#ffadad" }}>
               {errMsg}
