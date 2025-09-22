@@ -767,3 +767,28 @@ canvas {
   font-family: var(--font-lekton, "Lekton"), var(--font-ui, "Open Sans"),
     system-ui, sans-serif !important;
 }
+
+/* Contenedor para poner botones arriba-derecha en cualquier pantalla */
+.top-actions {
+  position: absolute;
+  top: calc(12px + var(--sa-t));
+  right: calc(12px + var(--sa-r));
+  display: flex;
+  gap: 8px;
+  z-index: 30;
+  pointer-events: auto;
+}
+
+/* Cuando están dentro de .top-actions, que NO sean absolutos */
+.top-actions .mute-btn,
+.top-actions .skip-btn {
+  position: static !important;
+  bottom: auto !important;
+  right: auto !important;
+}
+
+/* (Opcional) un poquito de realce al pasar */
+.top-actions .skip-btn:hover,
+.top-actions .mute-btn:hover {
+  color: rgba(255, 255, 255, 0.95);
+}

@@ -18,25 +18,36 @@ const SEGMENTS = [
 ] as const;
 
 export default function Ritual({ onComplete }: { onComplete: () => void }) {
+  /** Mantener la callback estable aunque el padre re-renderice */
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  /** Reloj basado en RAF que NO se reinicia al mutear */
   const rafRef = useRef<number | null>(null);
+  const startRef = useRef<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
 
   useEffect(() => {
-    const start = performance.now();
+    if (startRef.current == null) startRef.current = performance.now();
+
     const tick = (now: number) => {
-      const ms = Math.min(now - start, TOTAL_SEC * 1000);
+      const ms = Math.min(now - startRef.current!, TOTAL_SEC * 1000);
       setElapsedMs(ms);
+
       if (ms >= TOTAL_SEC * 1000) {
-        onComplete();
+        onCompleteRef.current?.();
         return;
       }
       rafRef.current = requestAnimationFrame(tick);
     };
+
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [onComplete]);
+  }, []); // ← sin deps, no se reinicia
 
   const elapsedSec = Math.floor(elapsedMs / 1000);
   const remainingSec = Math.max(0, TOTAL_SEC - elapsedSec);
@@ -47,11 +58,11 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
     [elapsedSec]
   );
 
-  /** --- Vela & llama (sincronizados con el derretido) --- */
+  /** Vela & llama (derretido sincronizado con progress) */
   const candleW = 140;
   const candleH = 240;
   const topY = 150; // Y del borde superior original
-  const melt = progress * (candleH * 0.7); // cuánto “baja” la superficie
+  const melt = progress * (candleH * 0.7);
   const waxY = topY + melt; // Y actual de la superficie de cera
   const visibleH = Math.max(16, candleH - melt);
   const flicker =
@@ -63,10 +74,10 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
       className="screen screen-portal place-items-center"
       aria-label="Un minuto de silencio"
     >
-      {/* Cielo + halo */}
+      {/* Cielo + nubes */}
       <div aria-hidden="true" className="clouds" />
 
-      {/* Vignette/oscurecido para legibilidad */}
+      {/* Vignette para legibilidad */}
       <div
         aria-hidden="true"
         style={{
@@ -78,10 +89,11 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
         }}
       />
 
+      {/* Audio ambiente + botón mute (no afecta el reloj) */}
       <AmbientAudio src="/ambience-soft.mp3" volume={0.22} />
       <MuteButton />
 
-      {/* Contador simple (solo texto) */}
+      {/* Contador (texto) */}
       <div
         aria-live="polite"
         style={{
@@ -215,7 +227,7 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
                 opacity="0.92"
               />
 
-              {/* Gotas que aparecen durante el minuto */}
+              {/* Gotas durante el minuto */}
               {progress > 0.35 && (
                 <path
                   d={`M ${210 + candleW / 2 - 10} ${
@@ -240,7 +252,7 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
               )}
             </g>
 
-            {/* Pabilo y llama SIGUEN a la superficie (waxY) */}
+            {/* Pabilo y llama siguen a la superficie (waxY) */}
             <rect
               x="208"
               y={waxY - 8}
@@ -299,15 +311,11 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
           </svg>
         </div>
 
-        {/* Bloque de mensajes (único, sin solaparse) */}
+        {/* Mensajes */}
         <div
           className="fade-in-600"
           aria-live="polite"
-          style={{
-            minHeight: 110,
-            textAlign: "center",
-            marginTop: 6,
-          }}
+          style={{ minHeight: 110, textAlign: "center", marginTop: 6 }}
         >
           {!finished ? (
             <>
@@ -352,7 +360,7 @@ export default function Ritual({ onComplete }: { onComplete: () => void }) {
           <button
             type="button"
             className="skip-btn"
-            onClick={onComplete}
+            onClick={onCompleteRef.current}
             aria-label="Saltar el minuto y pasar al jardín"
             title="Saltar"
           >
