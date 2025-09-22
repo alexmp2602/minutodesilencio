@@ -1,3 +1,4 @@
+// app/components/Flowers.tsx
 "use client";
 
 import * as THREE from "three";
@@ -14,6 +15,10 @@ import {
 } from "@react-three/drei";
 
 type FlowersResponse = { flowers: Flower[] };
+
+const CAP = 512 as const;
+const VARIANTS = ["rose", "tulip", "daisy"] as const;
+type Variant = (typeof VARIANTS)[number];
 
 function seedFromString(str: string) {
   let h = 1779033703 ^ str.length;
@@ -102,11 +107,13 @@ function useGlowTexture() {
   }, []);
 }
 
+/** Bloom animado para flores NUEVAS (respeta variant) */
 function NewBloom({
   pos,
   stemH,
   bloomR,
   color,
+  variant,
   glowMap,
   onOver,
   onOut,
@@ -116,6 +123,7 @@ function NewBloom({
   stemH: number;
   bloomR: number;
   color: THREE.Color;
+  variant: Variant;
   glowMap: THREE.Texture;
   onOver: () => void;
   onOut: () => void;
@@ -127,27 +135,95 @@ function NewBloom({
 
   return (
     <group>
-      <mesh
-        position={[pos[0], y, pos[2]]}
-        scale={[s, s, s]}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          onOver();
-        }}
-        onPointerOut={(e) => {
-          e.stopPropagation();
-          onOut();
-        }}
-      >
-        <sphereGeometry args={[1, 16, 16]} />
-        <meshStandardMaterial
-          color={color}
-          roughness={0.6}
-          metalness={0.05}
-          emissive={color.clone().multiplyScalar(0.6)}
-          emissiveIntensity={0.6 * pulse}
-        />
-      </mesh>
+      {/* Forma principal según variante */}
+      {variant === "rose" && (
+        <mesh
+          position={[pos[0], y, pos[2]]}
+          scale={[s, s, s]}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            onOver();
+          }}
+          onPointerOut={(e) => {
+            e.stopPropagation();
+            onOut();
+          }}
+        >
+          <sphereGeometry args={[1, 16, 16]} />
+          <meshStandardMaterial
+            color={color}
+            roughness={0.6}
+            metalness={0.05}
+            emissive={color.clone().multiplyScalar(0.6)}
+            emissiveIntensity={0.6 * pulse}
+          />
+        </mesh>
+      )}
+
+      {variant === "tulip" && (
+        <mesh
+          position={[pos[0], y + s * 0.2, pos[2]]}
+          scale={[s * 0.9, s * 1.35, s * 0.9]}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            onOver();
+          }}
+          onPointerOut={(e) => {
+            e.stopPropagation();
+            onOut();
+          }}
+        >
+          <coneGeometry args={[1, 1.8, 10]} />
+          <meshStandardMaterial
+            color={color}
+            roughness={0.58}
+            metalness={0.04}
+            emissive={color.clone().multiplyScalar(0.5)}
+            emissiveIntensity={0.55 * pulse}
+          />
+        </mesh>
+      )}
+
+      {variant === "daisy" && (
+        <group
+          position={[pos[0], y, pos[2]]}
+          scale={[s, s, s]}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            onOver();
+          }}
+          onPointerOut={(e) => {
+            e.stopPropagation();
+            onOut();
+          }}
+        >
+          {/* Anillo de pétalos (disco fino) */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.55, 1, 18]} />
+            <meshStandardMaterial
+              color={color}
+              roughness={0.65}
+              metalness={0.02}
+              emissive={color.clone().multiplyScalar(0.45)}
+              emissiveIntensity={0.45 * pulse}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+          {/* Centro */}
+          <mesh position={[0, 0.06, 0]}>
+            <sphereGeometry args={[0.28, 12, 12]} />
+            <meshStandardMaterial
+              color={"#ffe39e"}
+              roughness={0.5}
+              metalness={0.02}
+              emissive={"#ffd177"}
+              emissiveIntensity={0.35 * pulse}
+            />
+          </mesh>
+        </group>
+      )}
+
+      {/* Glow billboard común */}
       <Billboard
         position={[pos[0], y, pos[2]]}
         follow={false}
@@ -170,8 +246,6 @@ function NewBloom({
     </group>
   );
 }
-
-const CAP = 512;
 
 export default function Flowers() {
   const { data } = useSWR<FlowersResponse>("/api/flowers", fetcher, {
@@ -200,30 +274,83 @@ export default function Flowers() {
       const stemH = 0.4 + rnd() * 0.45;
       const bloomR = 0.06 + rnd() * 0.06;
       const colorStr = (f as Record<string, unknown>).color;
-      const color =
+      let color =
         typeof colorStr === "string" && colorStr
           ? new THREE.Color(colorStr)
           : colorFromId(f.id);
+
+      // Variante normalizada
+      const rawVar = (f as Record<string, unknown>).variant;
+      const v =
+        typeof rawVar === "string" && VARIANTS.includes(rawVar as Variant)
+          ? (rawVar as Variant)
+          : ("rose" as Variant);
+
+      // Estado de vida
+      const alive =
+        typeof (f as Record<string, unknown>).alive === "boolean"
+          ? ((f as Record<string, unknown>).alive as boolean)
+          : true;
+
+      // Si está marchita, desaturamos/oscurecemos un poco
+      if (!alive) {
+        const gray = new THREE.Color("#777");
+        color = color.clone().lerp(gray, 0.45);
+      }
+
       const isNew = initRef.current && !seenRef.current.has(f.id);
       if (isNew) seenRef.current.add(f.id);
-      return { f, pos, stemH, bloomR, color, isNew };
+
+      // Inclinación/droop para marchitas (axis aleatorio)
+      const tiltA = rnd() * Math.PI * 2;
+      const tilt = !alive ? 0.45 + rnd() * 0.25 : 0;
+      const rotX = Math.cos(tiltA) * tilt;
+      const rotZ = Math.sin(tiltA) * tilt;
+
+      return {
+        f,
+        pos,
+        stemH,
+        bloomR,
+        color,
+        variant: v,
+        alive,
+        isNew,
+        rotX,
+        rotZ,
+      };
     });
   }, [data?.flowers]);
 
   const stems = items.slice(0, CAP);
-  const oldBlooms = items.filter((it) => !it.isNew).slice(0, CAP);
+
+  // Viejas (ya presentes) separadas por variante
+  const oldRoses = items
+    .filter((it) => !it.isNew && it.variant === "rose")
+    .slice(0, CAP);
+  const oldTulips = items
+    .filter((it) => !it.isNew && it.variant === "tulip")
+    .slice(0, CAP);
+  const oldDaisies = items
+    .filter((it) => !it.isNew && it.variant === "daisy")
+    .slice(0, CAP);
+
+  // Nuevas para animación
   const newBlooms = items.filter((it) => it.isNew);
 
   return (
     <>
+      {/* Tallos (cilindros instanciados) */}
       <Instances limit={CAP} range={stems.length}>
         <cylinderGeometry args={[0.012, 0.02, 1, 6]} />
-        <meshStandardMaterial color="#2c6f2c" roughness={0.95} />
-        {stems.map(({ f, pos, stemH }) => (
+        <meshStandardMaterial roughness={0.95} />
+        {stems.map(({ f, pos, stemH, alive, rotX, rotZ }) => (
           <Instance
             key={`stem-${f.id}`}
             position={[pos[0], stemH / 2, pos[2]]}
             scale={[1, stemH, 1]}
+            rotation={[rotX, 0, rotZ]}
+            color={alive ? "#2c6f2c" : "#6e6e6e"}
             onPointerOver={(e) => {
               e.stopPropagation();
               setHoverId(f.id);
@@ -236,14 +363,16 @@ export default function Flowers() {
         ))}
       </Instances>
 
-      <Instances limit={CAP} range={oldBlooms.length}>
+      {/* ROSE: esferas instanciadas */}
+      <Instances limit={CAP} range={oldRoses.length}>
         <sphereGeometry args={[1, 16, 16]} />
         <meshStandardMaterial roughness={0.6} metalness={0.05} />
-        {oldBlooms.map(({ f, pos, stemH, bloomR, color }) => (
+        {oldRoses.map(({ f, pos, stemH, bloomR, color, rotX, rotZ, alive }) => (
           <Instance
-            key={`bloom-${f.id}`}
-            position={[pos[0], stemH + bloomR * 1.1, pos[2]]}
+            key={`rose-${f.id}`}
+            position={[pos[0], stemH + bloomR * (alive ? 1.1 : 0.8), pos[2]]}
             scale={[bloomR, bloomR, bloomR]}
+            rotation={[rotX, 0, rotZ]}
             color={color.getStyle()}
             onPointerOver={(e) => {
               e.stopPropagation();
@@ -257,7 +386,100 @@ export default function Flowers() {
         ))}
       </Instances>
 
-      {newBlooms.map(({ f, pos, stemH, bloomR, color }) => (
+      {/* TULIP: conos instanciados */}
+      <Instances limit={CAP} range={oldTulips.length}>
+        <coneGeometry args={[1, 1.8, 10]} />
+        <meshStandardMaterial roughness={0.58} metalness={0.04} />
+        {oldTulips.map(
+          ({ f, pos, stemH, bloomR, color, rotX, rotZ, alive }) => (
+            <Instance
+              key={`tulip-${f.id}`}
+              position={[
+                pos[0],
+                stemH + bloomR * (alive ? 1.25 : 0.95),
+                pos[2],
+              ]}
+              scale={[bloomR * 0.9, bloomR * 1.35, bloomR * 0.9]}
+              rotation={[rotX, 0, rotZ]}
+              color={color.getStyle()}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setHoverId(f.id);
+              }}
+              onPointerOut={(e) => {
+                e.stopPropagation();
+                setHoverId((id) => (id === f.id ? null : id));
+              }}
+            />
+          )
+        )}
+      </Instances>
+
+      {/* DAISY: anillos instanciados (pétalos) */}
+      <Instances limit={CAP} range={oldDaisies.length}>
+        <ringGeometry args={[0.55, 1, 18]} />
+        <meshStandardMaterial
+          roughness={0.65}
+          metalness={0.02}
+          side={THREE.DoubleSide}
+        />
+        {oldDaisies.map(
+          ({ f, pos, stemH, bloomR, color, rotX, rotZ, alive }) => (
+            <Instance
+              key={`daisy-${f.id}`}
+              position={[
+                pos[0],
+                stemH + 0.02 + (alive ? bloomR * 1.05 : bloomR * 0.8),
+                pos[2],
+              ]}
+              scale={[bloomR, bloomR, bloomR]}
+              rotation={[-Math.PI / 2 + rotX, 0, rotZ]}
+              color={color.getStyle()}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setHoverId(f.id);
+              }}
+              onPointerOut={(e) => {
+                e.stopPropagation();
+                setHoverId((id) => (id === f.id ? null : id));
+              }}
+            />
+          )
+        )}
+      </Instances>
+
+      {/* DAISY centro: esferas pequeñas instanciadas */}
+      <Instances limit={CAP} range={oldDaisies.length}>
+        <sphereGeometry args={[1, 12, 12]} />
+        <meshStandardMaterial
+          color={"#ffe39e"}
+          roughness={0.5}
+          metalness={0.02}
+        />
+        {oldDaisies.map(({ f, pos, stemH, bloomR, rotX, rotZ, alive }) => (
+          <Instance
+            key={`daisy-center-${f.id}`}
+            position={[
+              pos[0],
+              stemH + 0.06 + (alive ? bloomR * 1.05 : bloomR * 0.8),
+              pos[2],
+            ]}
+            scale={[bloomR * 0.28, bloomR * 0.28, bloomR * 0.28]}
+            rotation={[rotX, 0, rotZ]}
+            onPointerOver={(e) => {
+              e.stopPropagation();
+              setHoverId(f.id);
+            }}
+            onPointerOut={(e) => {
+              e.stopPropagation();
+              setHoverId((id) => (id === f.id ? null : id));
+            }}
+          />
+        ))}
+      </Instances>
+
+      {/* NUEVAS con animación y glow */}
+      {newBlooms.map(({ f, pos, stemH, bloomR, color, variant }) => (
         <NewBloom
           key={`new-${f.id}`}
           id={f.id}
@@ -265,12 +487,14 @@ export default function Flowers() {
           stemH={stemH}
           bloomR={bloomR}
           color={color}
+          variant={variant}
           glowMap={glowMap}
           onOver={() => setHoverId(f.id)}
           onOut={() => setHoverId((id) => (id === f.id ? null : id))}
         />
       ))}
 
+      {/* Mensajes en hover */}
       {items.map(({ f, pos, stemH, bloomR }) =>
         f.message ? (
           <Html

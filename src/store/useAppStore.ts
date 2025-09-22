@@ -1,3 +1,4 @@
+// src/store/useAppStore.ts
 import { create } from "zustand";
 import type { Stage } from "@/lib/stages";
 

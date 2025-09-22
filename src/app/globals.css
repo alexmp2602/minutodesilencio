@@ -1,3 +1,74 @@
+/* ================================
+   FUENTES
+   ================================ */
+
+/* Google Fonts para UI secundaria y CTA */
+@import url("https://fonts.googleapis.com/css2?family=Lekton:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap");
+
+/* Catchy Mager autohospedada (archivos en /public/fonts) */
+@font-face {
+  font-family: "CatchyMager";
+  src: url("/fonts/CatchyMager-Regular.woff2") format("woff2"),
+    url("/fonts/CatchyMager-Regular.woff") format("woff"),
+    url("/fonts/Catchy Mager.otf") format("opentype"),
+    url("/fonts/Catchy Mager.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Helpers tipográficos – usan next/font si existe, y caen a locales si no */
+.font-display {
+  font-family: var(--font-catchy, "CatchyMager"), var(--font-ui, "Open Sans"),
+    system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+.font-cta {
+  font-family: var(--font-lekton, "Lekton"), var(--font-ui, "Open Sans"),
+    system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  letter-spacing: 0.2px;
+}
+.font-sans {
+  font-family: var(--font-ui, "Open Sans"), system-ui, -apple-system, Segoe UI,
+    Roboto, Arial, sans-serif;
+}
+
+/* Neon outline utilidades */
+:root {
+  --neon-color: #7ed1ff;
+  --neon-stroke: #c7ebff;
+  --neon-contrast: #0a1530;
+}
+.neon-outline {
+  font-family: var(--font-catchy, "CatchyMager"), var(--font-ui, "Open Sans"),
+    system-ui, sans-serif;
+  color: var(--neon-contrast);
+  -webkit-text-stroke: 2px var(--neon-stroke);
+  text-shadow: 0 0 6px color-mix(in oklab, var(--neon-color), transparent 35%),
+    0 0 14px color-mix(in oklab, var(--neon-color), transparent 25%),
+    0 0 28px color-mix(in oklab, var(--neon-color), transparent 10%);
+}
+.neon-strong {
+  -webkit-text-stroke: 2.5px var(--neon-stroke);
+  text-shadow: 0 0 8px var(--neon-color), 0 0 16px var(--neon-color),
+    0 0 34px color-mix(in oklab, var(--neon-color), white 20%);
+}
+.neon-soft {
+  -webkit-text-stroke: 1.5px color-mix(in oklab, var(--neon-stroke), white 15%);
+  text-shadow: 0 0 5px color-mix(in oklab, var(--neon-color), transparent 55%),
+    0 0 12px color-mix(in oklab, var(--neon-color), transparent 45%);
+}
+.display-1 {
+  font-size: clamp(36px, 7vw, 72px);
+  line-height: 1.02;
+}
+.display-2 {
+  font-size: clamp(28px, 5.2vw, 56px);
+  line-height: 1.05;
+}
+
+/* ================================
+   THEME / TOKENS
+   ================================ */
 :root {
   --bg: #0b0d10;
   --bg-elev: #12161b;
@@ -13,27 +84,38 @@
   --sa-r: env(safe-area-inset-right, 0px);
   --sa-b: env(safe-area-inset-bottom, 0px);
   --sa-l: env(safe-area-inset-left, 0px);
+
+  /* Cielo / portal */
+  --sky-top: #0a3e84;
+  --sky-mid: #4aa3ff;
+  --sky-bottom: #bfe1ff;
+  --cloud: #ffffff;
+  --halo-core: #ffffff;
+  --halo-warm: #fff4c9;
+  --halo-blue: #a7d2ff;
+  --blue-french: #2a57c7;
 }
 
+/* ================================
+   RESET / BASE
+   ================================ */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
-
 html,
 body {
   height: 100%;
   width: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
-    Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji",
-    "Segoe UI Symbol", sans-serif;
+  font-family: var(--font-ui, "Open Sans"), system-ui, -apple-system, Segoe UI,
+    Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-
 main {
   width: 100%;
   min-height: 100dvh;
@@ -51,12 +133,14 @@ canvas {
   height: auto;
   display: block;
 }
-
 ::selection {
   background: color-mix(in hsl, var(--primary), transparent 70%);
   color: #0b0d10;
 }
 
+/* ================================
+   LAYOUT
+   ================================ */
 .screen {
   min-height: 100dvh;
   width: 100%;
@@ -70,7 +154,6 @@ canvas {
     overflow: clip;
   }
 }
-
 .bg-radial {
   background: radial-gradient(
       1200px 600px at 50% 28%,
@@ -96,7 +179,6 @@ canvas {
   overflow-wrap: anywhere;
   hyphens: auto;
 }
-
 .mt-8 {
   margin-top: 8px;
 }
@@ -107,6 +189,9 @@ canvas {
   margin-top: 24px;
 }
 
+/* ================================
+   BOTONES
+   ================================ */
 .btn {
   appearance: none;
   border: none;
@@ -116,10 +201,13 @@ canvas {
   padding: 12px 20px;
   border-radius: var(--radius);
   cursor: pointer;
-  transition: filter 0.12s ease-in-out;
+  transition: filter 0.12s ease-in-out, transform 0.06s ease-in-out;
 }
 .btn:hover {
   filter: brightness(1.05);
+}
+.btn:active {
+  transform: translateY(1px);
 }
 .btn:focus-visible {
   outline: 2px solid color-mix(in hsl, var(--primary), white 20%);
@@ -131,11 +219,180 @@ canvas {
   font-size: 14px;
 }
 
-.hint {
-  color: var(--muted);
-  font-size: 14px;
+/* CTA etéreo (usa Lekton) */
+/* Botón CONTINUAR: óvalo blanco, no tan pill */
+.btn-portal {
+  /* knobs que podés tocar */
+  --btn-r: 22px; /* radio del óvalo (↓ menos pill, ↑ más pill) */
+  --btn-bg: rgba(255, 255, 255, 0.92);
+  --btn-text: #232cff; /* azul del texto */
+  --btn-shadow: 0 14px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
+
+  appearance: none;
+  border: none; /* sin borde visible */
+  background: var(--btn-bg);
+  color: var(--btn-text);
+
+  border-radius: var(--btn-r);
+  padding: 10px 30px;
+  font-family: var(--font-cta, "Lekton", "Open Sans", system-ui, sans-serif);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    /* brillo sutil interior */ var(--btn-shadow);
+  backdrop-filter: blur(4px) saturate(1.02);
+  -webkit-backdrop-filter: blur(4px) saturate(1.02);
+
+  transition: transform 0.15s var(--easing), box-shadow 0.15s var(--easing),
+    background 0.2s ease;
 }
 
+.btn-portal:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 16px 34px rgba(0, 0, 0, 0.22), 0 3px 8px rgba(0, 0, 0, 0.14);
+}
+
+.btn-portal:active {
+  transform: translateY(0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 10px 22px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.14);
+}
+
+.btn-portal:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.55),
+    0 0 0 6px rgba(255, 255, 255, 0.65);
+}
+
+/* algo más compacto en mobile */
+@media (max-width: 560px) {
+  .btn-portal {
+    padding: 12px 22px;
+    border-radius: 24px;
+  }
+}
+
+/* ================================
+   INTRO (PORTAL)
+   ================================ */
+.screen-portal {
+  position: relative;
+  background: linear-gradient(
+    to bottom,
+    var(--sky-top),
+    var(--sky-mid) 45%,
+    var(--sky-bottom) 100%
+  );
+  overflow: hidden;
+}
+/* Nubes con parallax */
+.clouds {
+  position: absolute;
+  inset: -10% -10% 0 -10%;
+  background: radial-gradient(
+      120px 50px at 20% 30%,
+      color-mix(in oklab, var(--cloud), transparent 35%),
+      transparent 60%
+    ),
+    radial-gradient(
+      160px 60px at 70% 40%,
+      color-mix(in oklab, var(--cloud), transparent 35%),
+      transparent 60%
+    ),
+    radial-gradient(
+      140px 50px at 40% 70%,
+      color-mix(in oklab, var(--cloud), transparent 35%),
+      transparent 60%
+    );
+  filter: blur(6px) saturate(0.9);
+  animation: float-clouds 28s linear infinite;
+  opacity: 0.75;
+}
+@keyframes float-clouds {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-12%);
+  }
+}
+
+/* Halo */
+.halo {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.halo::before,
+.halo::after {
+  content: "";
+  position: absolute;
+  width: min(70vmin, 560px);
+  height: min(70vmin, 560px);
+  border-radius: 50%;
+  filter: blur(12px);
+}
+.halo::before {
+  background: radial-gradient(
+    circle at 50% 50%,
+    var(--halo-core) 0%,
+    var(--halo-warm) 55%,
+    transparent 60%
+  );
+  opacity: 0.9;
+}
+.halo::after {
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in oklab, var(--halo-blue), transparent 40%) 0%,
+    transparent 70%
+  );
+  transform: scale(1.25);
+  animation: halo-pulse 4.8s var(--easing) infinite;
+  opacity: 0.85;
+}
+@keyframes halo-pulse {
+  0%,
+  100% {
+    transform: scale(1.22);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.32);
+    opacity: 1;
+  }
+}
+
+/* Textos portal */
+.portal-text {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  place-self: center;
+  color: var(--blue-french);
+  text-shadow: 0 0 8px color-mix(in oklab, var(--blue-french), white 20%),
+    0 0 18px color-mix(in oklab, var(--blue-french), transparent 50%);
+}
+.portal-title {
+  font-size: clamp(22px, 3.8vw, 36px);
+  font-weight: 600;
+  font-style: italic;
+}
+.portal-sub {
+  font-size: clamp(16px, 2.6vw, 20px);
+  margin-top: 10px;
+  font-style: italic;
+}
+
+/* ================================
+   CONTENEDORES INTRO/RITUAL
+   ================================ */
 .intro-card {
   place-self: center;
   text-align: center;
@@ -165,6 +422,7 @@ canvas {
   font-variant-numeric: tabular-nums;
 }
 
+/* Crossfade */
 .crossfade {
   position: relative;
   width: min(520px, 90vw);
@@ -212,7 +470,6 @@ canvas {
     transform: translateY(0);
   }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .fade-in-600,
   .crossfade-item {
@@ -223,16 +480,16 @@ canvas {
   }
 }
 
-/* ========== Skip/Mute (ritual y jardín) ========== */
+/* Skip / Mute */
 .skip-btn,
 .mute-btn {
   position: absolute;
   right: calc(16px + var(--sa-r));
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
-  transition: color 0.2s ease;
+  transition: color 0.2s ease, transform 0.06s ease;
   z-index: 20;
   display: inline-grid;
   place-items: center;
@@ -249,12 +506,14 @@ canvas {
   bottom: calc(56px + var(--sa-b));
   font-size: 22px;
 }
-
 .skip-btn:hover,
 .mute-btn:hover {
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
 }
-
+.skip-btn:active,
+.mute-btn:active {
+  transform: translateY(1px);
+}
 @media (pointer: coarse) {
   .skip-btn,
   .mute-btn {
@@ -264,6 +523,9 @@ canvas {
   }
 }
 
+/* ================================
+   CANVAS INMERSIVO
+   ================================ */
 .screen-immersive {
   position: fixed;
   inset: 0;
@@ -279,7 +541,6 @@ canvas {
   height: 100% !important;
   border-radius: 0;
 }
-
 .canvas-grab {
   cursor: grab;
 }
@@ -287,7 +548,9 @@ canvas {
   cursor: grabbing;
 }
 
-/* Overlay compacto: lista arriba-izq y formulario abajo-izq */
+/* ================================
+   OVERLAY JARDÍN
+   ================================ */
 .garden-overlay {
   position: absolute;
   inset: 0;
@@ -300,24 +563,28 @@ canvas {
     calc(12px + var(--sa-b)) calc(12px + var(--sa-l));
   align-content: stretch;
   justify-items: start;
+  z-index: 12;
 }
 .garden-overlay .panel {
   pointer-events: auto;
   align-self: start;
   width: clamp(260px, 26vw, 320px);
-  background: color-mix(in oklab, var(--bg) 95%, white 5%);
-  border: 1px solid color-mix(in oklab, var(--border) 92%, white 8%);
+  background: color-mix(
+    in oklab,
+    var(--bg) 84%,
+    white 16%
+  ); /* +opacidad para legibilidad */
+  border: 1px solid color-mix(in oklab, var(--border) 80%, white 20%);
   border-radius: var(--radius);
   padding: 10px 12px;
-  backdrop-filter: blur(6px) saturate(1.05);
-  -webkit-backdrop-filter: blur(6px) saturate(1.05);
+  backdrop-filter: blur(8px) saturate(1.05);
+  -webkit-backdrop-filter: blur(8px) saturate(1.05);
   box-shadow: var(--shadow-lg);
 }
 .garden-overlay .panel-title {
   font-weight: 700;
   margin-bottom: 6px;
 }
-
 .garden-overlay .row {
   display: flex;
   gap: 8px;
@@ -342,6 +609,7 @@ canvas {
 }
 .garden-overlay .input:focus {
   border-color: color-mix(in hsl, var(--primary), white 20%);
+  box-shadow: 0 0 0 2px color-mix(in hsl, var(--primary), transparent 80%);
 }
 .garden-overlay .hint {
   margin-top: 6px;
@@ -363,8 +631,8 @@ canvas {
   align-items: center;
   padding: 6px 8px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 .garden-overlay .dot {
   width: 8px;
@@ -387,7 +655,6 @@ canvas {
   font-size: 11px;
 }
 
-/* posiciones */
 .panel-latest {
   grid-row: 1;
 }
@@ -402,7 +669,7 @@ canvas {
   font-weight: 700;
 }
 
-/* scrollbars sutiles */
+/* Scrollbars sutiles */
 .garden-overlay .list::-webkit-scrollbar {
   height: 8px;
   width: 8px;
@@ -430,7 +697,11 @@ canvas {
   }
 }
 
-/* helpers a11y */
+/* Helpers */
+.hint {
+  color: var(--muted);
+  font-size: 14px;
+}
 .visually-hidden,
 .sr-only {
   position: absolute !important;
@@ -444,6 +715,7 @@ canvas {
   border: 0;
 }
 
+/* Fallbacks si color-mix no existe */
 @supports not (color: color-mix(in hsl, white, black)) {
   .btn:focus-visible {
     outline-color: #8fd7ff;
@@ -452,10 +724,46 @@ canvas {
     background: rgba(11, 13, 16, 0.92);
   }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .garden-overlay .panel {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
+}
+
+/* ================================
+   SELECTOR FLORES (centro-inferior)
+   ================================ */
+.picker-card {
+  background: rgba(14, 16, 18, 0.8) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45) !important;
+  border-radius: 20px !important;
+}
+.picker-arrow {
+  background: rgba(0, 0, 0, 0.32) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 14px !important;
+  transition: filter 0.12s ease-in-out, transform 0.06s ease-in-out !important;
+}
+.picker-arrow:hover {
+  filter: brightness(1.08) !important;
+}
+.picker-arrow:active {
+  transform: translateY(1px) !important;
+}
+.picker-arrow:disabled {
+  opacity: 0.6 !important;
+  cursor: default !important;
+}
+.picker-cta {
+  background: #f1b6e6 !important;
+  color: #1c1322 !important;
+  font-weight: 800 !important;
+  border: none !important;
+  font-family: var(--font-lekton, "Lekton"), var(--font-ui, "Open Sans"),
+    system-ui, sans-serif !important;
 }

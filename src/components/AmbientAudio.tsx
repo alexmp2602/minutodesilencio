@@ -1,3 +1,4 @@
+// app/components/AmbientAudio.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -12,11 +13,32 @@ export default function AmbientAudio({ src, volume = 0.15 }: Props) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+
     el.volume = volume;
     el.muted = muted;
-    if (muted) el.pause();
-    else el.play().catch(() => {});
+
+    if (muted) {
+      el.pause();
+    } else {
+      // Forzar autoplay si el navegador lo permite
+      el.autoplay = true;
+      el.play().catch(() => {});
+    }
+
+    return () => {
+      el.pause();
+    };
   }, [muted, volume]);
 
-  return <audio ref={ref} src={src} loop preload="auto" aria-hidden="true" />;
+  return (
+    <audio
+      ref={ref}
+      src={src}
+      loop
+      preload="auto"
+      aria-hidden="true"
+      hidden
+      tabIndex={-1}
+    />
+  );
 }

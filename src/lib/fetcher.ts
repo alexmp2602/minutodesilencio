@@ -1,3 +1,4 @@
+// src/lib/fetcher.ts
 export const fetcher = async <T>(
   input: RequestInfo | URL,
   init?: RequestInit

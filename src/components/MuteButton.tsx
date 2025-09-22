@@ -1,3 +1,4 @@
+// app/components/MuteButton.tsx
 "use client";
 
 import { useAppStore } from "@/store/useAppStore";
@@ -9,11 +10,13 @@ export default function MuteButton() {
     <button
       type="button"
       className="mute-btn"
+      onClick={toggleMute}
       aria-label={muted ? "Activar sonido" : "Silenciar sonido"}
       aria-pressed={muted}
-      onClick={toggleMute}
+      aria-live="polite"
+      title={muted ? "Activar sonido" : "Silenciar sonido"}
     >
-      {muted ? "🔇" : "🔊"}
+      <span aria-hidden="true">{muted ? "🔇" : "🔊"}</span>
     </button>
   );
 }

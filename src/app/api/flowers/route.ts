@@ -1,3 +1,4 @@
+// src/app/api/flowers/route.ts
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseServer";
 

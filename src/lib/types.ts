@@ -1,5 +1,9 @@
+// src/lib/types.ts
 export const FLOWER_STATES = ["alive", "decayed", "wilted", "revived"] as const;
 export type FlowerState = (typeof FLOWER_STATES)[number];
+
+export const FLOWER_FAMILIES = ["rose", "tulip", "daisy"] as const;
+export type FlowerFamily = (typeof FLOWER_FAMILIES)[number];
 
 export type ISODateString = string;
 export type FlowerId = string;
@@ -21,5 +25,10 @@ export type Flower = {
   wilted?: boolean | null;
   revived_at?: ISODateString | null;
   state?: FlowerState | null;
-  family?: string | null;
+
+  // usamos 'family' como la variante (rose/tulip/daisy)
+  family?: FlowerFamily | null;
+
+  // opcional: si más adelante guardás 'variant', lo aceptamos igual
+  variant?: FlowerFamily | null;
 };

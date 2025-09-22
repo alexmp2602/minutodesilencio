@@ -1,3 +1,4 @@
+// app/page.tsx
 "use client";
 
 import Intro from "@/components/Intro";
@@ -20,11 +21,11 @@ export default function HomePage() {
   }
 
   return (
-    <section className="screen-immersive">
+    <main id="main" className="screen-immersive">
       <AmbientAudio src="/ambience-nature.mp3" volume={0.15} />
       <Scene />
       <GardenOverlay />
       <MuteButton />
-    </section>
+    </main>
   );
 }

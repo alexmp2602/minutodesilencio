@@ -7,13 +7,15 @@ import { OrbitControls, PerformanceMonitor } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import Ground from "./Ground";
 import Flowers from "./Flowers";
+import PhotoBackdrop from "./PhotoBackdrop";
 
 export default function Scene() {
   const [dpr, setDpr] = useState<[number, number] | number>([1, 2]);
   const [grabbing, setGrabbing] = useState(false);
 
-  const fogColor = useMemo(() => new THREE.Color("#0a0f0a"), []);
-  const clearColor = "#0b0d10";
+  // Bruma cálida que funde con la foto
+  const fogColor = useMemo(() => new THREE.Color("#ffdcae"), []);
+  const clearColor = "#bcd9ff"; // no se llega a ver por el backdrop, pero mantiene coherencia
 
   return (
     <Canvas
@@ -26,10 +28,11 @@ export default function Scene() {
         gl.setClearColor(clearColor, 1);
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.0;
+        gl.toneMappingExposure = 0.95;
         gl.shadowMap.enabled = true;
         gl.shadowMap.type = THREE.PCFSoftShadowMap;
-        scene.fog = new THREE.Fog(fogColor, 18, 42);
+        // Fog que "lava" el horizonte hacia la foto
+        scene.fog = new THREE.Fog(fogColor, 18, 46);
       }}
       onPointerDown={(e) => {
         if (e.button === 2) setGrabbing(true);
@@ -42,26 +45,35 @@ export default function Scene() {
         onIncline={() => setDpr([1, 2])}
       />
 
-      <ambientLight intensity={0.35} />
-      <hemisphereLight groundColor="#222a22" color="#cfd6d9" intensity={0.35} />
+      {/* Fondo de foto (hace de cielo+colinas) */}
+      <PhotoBackdrop url="/bg-hills.webp" />
+
+      {/* Iluminación cálida de atardecer */}
+      <ambientLight intensity={0.25} />
+      <hemisphereLight color="#ffe8cc" groundColor="#315230" intensity={0.35} />
       <directionalLight
-        position={[5, 6, 3]}
-        intensity={1.05}
+        position={[6, 3, -2]}
+        color="#ffd8a8"
+        intensity={1.06}
         castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-bias={-0.0006}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-bias={-0.0005}
         shadow-camera-near={1}
-        shadow-camera-far={30}
-        shadow-camera-left={-12}
-        shadow-camera-right={12}
-        shadow-camera-top={12}
-        shadow-camera-bottom={-12}
+        shadow-camera-far={40}
+        shadow-camera-left={-14}
+        shadow-camera-right={14}
+        shadow-camera-top={14}
+        shadow-camera-bottom={-14}
       />
-      <directionalLight position={[-5, 3, -2]} intensity={0.25} />
+      <directionalLight
+        position={[-5, 3, -2]}
+        intensity={0.22}
+        color="#e6f0ff"
+      />
 
       <Suspense fallback={null}>
-        <Ground />
+        <Ground /> {/* verde más saturado, ver paso 3 */}
         <Flowers />
       </Suspense>
 
@@ -80,9 +92,9 @@ export default function Scene() {
       <EffectComposer multisampling={0}>
         <Bloom
           mipmapBlur
-          intensity={0.6}
-          luminanceThreshold={0.2}
-          luminanceSmoothing={0.1}
+          intensity={0.5}
+          luminanceThreshold={0.22}
+          luminanceSmoothing={0.12}
           radius={0.7}
         />
       </EffectComposer>
