@@ -2,14 +2,13 @@
    FUENTES
    ================================ */
 
-/* Google Fonts para UI secundaria y CTA */
+/* Google Fonts para UI secundaria y CTA (si usás next/font, podés quitar este @import) */
 @import url("https://fonts.googleapis.com/css2?family=Lekton:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap");
 
 /* Catchy Mager autohospedada (archivos en /public/fonts) */
 @font-face {
   font-family: "CatchyMager";
-  src: url("/fonts/CatchyMager-Regular.woff2") format("woff2"),
-    url("/fonts/CatchyMager-Regular.woff") format("woff"),
+  src: url("/fonts/CatchyMager.woff2") format("woff2"),
     url("/fonts/Catchy Mager.otf") format("opentype"),
     url("/fonts/Catchy Mager.ttf") format("truetype");
   font-weight: 400;
@@ -17,7 +16,8 @@
   font-display: swap;
 }
 
-/* Helpers tipográficos – usan next/font si existe, y caen a locales si no */
+/* Helpers tipográficos – si usás next/font, estas variables ya estarán definidas;
+   si no, caen a locales/Google */
 .font-display {
   font-family: var(--font-catchy, "CatchyMager"), var(--font-ui, "Open Sans"),
     system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
@@ -70,6 +70,7 @@
    THEME / TOKENS
    ================================ */
 :root {
+  color-scheme: dark;
   --bg: #0b0d10;
   --bg-elev: #12161b;
   --text: #e8eef3;
@@ -99,8 +100,12 @@
 /* ================================
    RESET / BASE
    ================================ */
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+}
+* {
   margin: 0;
   padding: 0;
 }
@@ -115,10 +120,12 @@ body {
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 main {
   width: 100%;
   min-height: 100dvh;
+  min-height: 100svh; /* iOS fallback para evitar saltos */
   display: flex;
   flex-direction: column;
 }
@@ -128,10 +135,18 @@ a {
 }
 img,
 video,
-canvas {
+canvas,
+svg {
   max-width: 100%;
   height: auto;
   display: block;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
 }
 ::selection {
   background: color-mix(in hsl, var(--primary), transparent 70%);
@@ -143,6 +158,7 @@ canvas {
    ================================ */
 .screen {
   min-height: 100dvh;
+  min-height: 100svh;
   width: 100%;
   display: grid;
   align-items: start;
@@ -219,17 +235,16 @@ canvas {
   font-size: 14px;
 }
 
-/* CTA etéreo (usa Lekton) */
-/* Botón CONTINUAR: óvalo blanco, no tan pill */
+/* CTA etéreo (usa Lekton) - Botón CONTINUAR: óvalo blanco, no tan pill */
 .btn-portal {
-  /* knobs que podés tocar */
+  /* knobs */
   --btn-r: 22px; /* radio del óvalo (↓ menos pill, ↑ más pill) */
   --btn-bg: rgba(255, 255, 255, 0.92);
   --btn-text: #232cff; /* azul del texto */
   --btn-shadow: 0 14px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
 
   appearance: none;
-  border: none; /* sin borde visible */
+  border: none;
   background: var(--btn-bg);
   color: var(--btn-text);
 
@@ -249,25 +264,21 @@ canvas {
   transition: transform 0.15s var(--easing), box-shadow 0.15s var(--easing),
     background 0.2s ease;
 }
-
 .btn-portal:hover {
   transform: translateY(-1px);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
     0 16px 34px rgba(0, 0, 0, 0.22), 0 3px 8px rgba(0, 0, 0, 0.14);
 }
-
 .btn-portal:active {
   transform: translateY(0);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
     0 10px 22px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.14);
 }
-
 .btn-portal:focus-visible {
   outline: 0;
   box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.55),
     0 0 0 6px rgba(255, 255, 255, 0.65);
 }
-
 /* algo más compacto en mobile */
 @media (max-width: 560px) {
   .btn-portal {
@@ -289,6 +300,7 @@ canvas {
   );
   overflow: hidden;
 }
+
 /* Nubes con parallax */
 .clouds {
   position: absolute;
@@ -366,6 +378,13 @@ canvas {
   50% {
     transform: scale(1.32);
     opacity: 1;
+  }
+}
+
+/* Fallbacks de color-mix/oklab para navegadores viejos */
+@supports not (color: color-mix(in oklab, white, black)) {
+  .halo::after {
+    opacity: 0.7;
   }
 }
 
@@ -472,10 +491,12 @@ canvas {
 }
 @media (prefers-reduced-motion: reduce) {
   .fade-in-600,
-  .crossfade-item {
+  .crossfade-item,
+  .clouds,
+  .halo::after,
+  .btn-portal {
     animation-duration: 1ms !important;
-  }
-  .crossfade-item {
+    transition-duration: 1ms !important;
     transform: none !important;
   }
 }
@@ -499,11 +520,11 @@ canvas {
   line-height: 1;
 }
 .skip-btn {
-  bottom: calc(16px + var(--sa-b));
-  font-size: 20px;
+  bottom: calc(90px + var(--sa-b));
+  font-size: 22px;
 }
 .mute-btn {
-  bottom: calc(56px + var(--sa-b));
+  bottom: calc(110px + var(--sa-b));
   font-size: 22px;
 }
 .skip-btn:hover,
@@ -573,7 +594,7 @@ canvas {
     in oklab,
     var(--bg) 84%,
     white 16%
-  ); /* +opacidad para legibilidad */
+  ); /* +opacidad legible */
   border: 1px solid color-mix(in oklab, var(--border) 80%, white 20%);
   border-radius: var(--radius);
   padding: 10px 12px;
@@ -623,6 +644,7 @@ canvas {
   gap: 6px;
   max-height: 240px;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 .garden-overlay .item {
   display: grid;
@@ -724,12 +746,6 @@ canvas {
     background: rgba(11, 13, 16, 0.92);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .garden-overlay .panel {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
 
 /* ================================
    SELECTOR FLORES (centro-inferior)
@@ -778,7 +794,6 @@ canvas {
   z-index: 30;
   pointer-events: auto;
 }
-
 /* Cuando están dentro de .top-actions, que NO sean absolutos */
 .top-actions .mute-btn,
 .top-actions .skip-btn {
@@ -786,8 +801,7 @@ canvas {
   bottom: auto !important;
   right: auto !important;
 }
-
-/* (Opcional) un poquito de realce al pasar */
+/* Realce al pasar */
 .top-actions .skip-btn:hover,
 .top-actions .mute-btn:hover {
   color: rgba(255, 255, 255, 0.95);

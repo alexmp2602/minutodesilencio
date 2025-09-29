@@ -1,19 +1,40 @@
 {
-  "name": "minutodesilencio",
-  "short_name": "minuto",
+  "name": "Minuto de Silencio",
+  "short_name": "Minuto",
+  "description": "Un espacio digital de reflexión: dedica un minuto en memoria de lo que ya no está.",
+  "lang": "es-AR",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0b0d10",
+  "background_color": "#0b0d10",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/android-chrome-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ],
-  "theme_color": "#0b0d10",
-  "background_color": "#0b0d10",
-  "display": "standalone"
+  "shortcuts": [
+    {
+      "name": "Entrar al portal",
+      "short_name": "Portal",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/favicon-32x32.png",
+          "sizes": "32x32",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
 }

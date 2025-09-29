@@ -2,8 +2,6 @@
 "use client";
 
 import * as React from "react";
-import type { JSX } from "react";
-import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
 import type { Flower } from "@/lib/types";
@@ -16,103 +14,45 @@ type Variant = (typeof VARIANTS)[number];
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
 
-/* ---------- Previews muy livianos ---------- */
-function PixelRose({ size = 72, color = "#E4B8FF" }) {
-  const rows = [
-    "......1111......",
-    ".....111111.....",
-    "....11111111....",
-    "...1111111111...",
-    "...1111111111...",
-    "....11111111....",
-    ".....111111.....",
-    "......1111......",
-    ".......11.......",
-    "....11111111....",
-    "...1111111111...",
-    "..111111111111..",
-    "..111111111111..",
-    "...1111111111...",
-    "......1111......",
-    "........1.......",
-  ];
-  const w = rows[0].length;
-  const h = rows.length;
-  const pad = 6;
-  const dotR = 0.9;
-  const dots: JSX.Element[] = [];
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      if (rows[y][x] === "1")
-        dots.push(
-          <circle
-            key={`${x}-${y}`}
-            cx={x + pad}
-            cy={y + pad}
-            r={dotR}
-            fill={color}
-          />
-        );
-    }
+/* ---------- ícono ultra-liviano del selector ---------- */
+function VariantIcon({ v }: { v: Variant }) {
+  if (v === "tulip") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+        <path
+          d="M12 3c2 3 5 3 5 7a5 5 0 0 1-10 0c0-4 3-4 5-7Z"
+          fill="currentColor"
+        />
+      </svg>
+    );
+  }
+  if (v === "daisy") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+        <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+        {Array.from({ length: 8 }).map((_, i) => {
+          const a = (i * Math.PI) / 4;
+          return (
+            <circle
+              key={i}
+              cx={12 + Math.cos(a) * 5.6}
+              cy={12 + Math.sin(a) * 5.6}
+              r="2.1"
+              fill="currentColor"
+            />
+          );
+        })}
+      </svg>
+    );
   }
   return (
-    <svg
-      viewBox={`0 0 ${w + pad * 2} ${h + pad * 2}`}
-      width={size}
-      height={(size * (h + pad * 2)) / (w + pad * 2)}
-    >
-      {dots}
-      <g fill={color} opacity={0.9}>
-        <rect
-          x={(w + pad * 2) / 2 - 0.6}
-          y={pad + h * 0.55}
-          width={1.2}
-          height={h * 0.28}
-          rx={0.6}
-        />
-        <ellipse
-          cx={(w + pad * 2) / 2}
-          cy={pad + h * 0.92}
-          rx={3.6}
-          ry={1.2}
-          opacity=".25"
-        />
-      </g>
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
+      <path
+        d="M12 6c3.2 0 5.8 2 5.8 4.5S15.2 15 12 15 6.2 13 6.2 10.5 8.8 6 12 6Z"
+        fill="currentColor"
+      />
     </svg>
   );
-}
-function Tulip({ size = 72, color = "#E4B8FF" }) {
-  return (
-    <svg viewBox="0 0 120 120" width={size} height={size} aria-hidden="true">
-      <g fill={color}>
-        <path d="M60 26c10 14 22 14 22 30 0 14-10 24-22 24s-22-10-22-24c0-16 12-16 22-30Z" />
-        <rect x="58" y="74" width="4" height="38" rx="2" />
-        <path d="M62 94c18-4 24-12 28-20-14 2-20 8-28 20Z" />
-        <path d="M58 100c-16-2-24-8-30-14 10 0 18 4 30 14Z" />
-      </g>
-    </svg>
-  );
-}
-function Daisy({ size = 72, color = "#E4B8FF" }) {
-  return (
-    <svg viewBox="0 0 120 120" width={size} height={size} aria-hidden="true">
-      <g fill={color}>
-        <circle cx="60" cy="36" r="9" />
-        {[...Array(8)].map((_, i) => {
-          const a = (i * Math.PI) / 4;
-          const x = 60 + Math.cos(a) * 18;
-          const y = 36 + Math.sin(a) * 18;
-          return <circle key={i} cx={x} cy={y} r="8" opacity=".92" />;
-        })}
-        <rect x="58" y="56" width="4" height="46" rx="2" />
-      </g>
-    </svg>
-  );
-}
-function Preview({ variant, size = 72 }: { variant: Variant; size?: number }) {
-  if (variant === "tulip") return <Tulip size={size} />;
-  if (variant === "daisy") return <Daisy size={size} />;
-  return <PixelRose size={size} />;
 }
 
 /* ---------- Overlay principal ---------- */
@@ -126,18 +66,17 @@ export default function GardenOverlay() {
     }
   );
 
-  const [pending, setPending] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [pending, setPending] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+  const [errMsg, setErrMsg] = React.useState<string | null>(null);
 
   const flowers = data?.flowers ?? [];
   const total = flowers.length;
 
-  // selector radial
-  const [idx, setIdx] = useState(0);
-  const variant = useMemo<Variant>(() => VARIANTS[idx]!, [idx]);
+  const [idx, setIdx] = React.useState(0);
+  const variant = VARIANTS[idx]!;
 
-  // pos aleatoria (cliente)
+  // Pos aleatoria local
   const pickPos = () => {
     const r = 3 + Math.random() * 9;
     const a = Math.random() * Math.PI * 2;
@@ -147,12 +86,10 @@ export default function GardenOverlay() {
   async function plant(messageFromUI: string) {
     if (pending) return;
     setErrMsg(null);
+
     const message = messageFromUI.trim().slice(0, 140) || undefined;
-
-    setPending(true);
-    setMsg("");
-
     const [px, py, pz] = pickPos();
+
     const optimistic: Flower = {
       id: `temp-${Date.now()}`,
       message: message ?? null,
@@ -164,70 +101,50 @@ export default function GardenOverlay() {
       family: variant,
     };
 
+    setPending(true);
+    setMsg("");
+
     try {
       await mutate(
         async (current?: FlowersResponse): Promise<FlowersResponse> => {
           const res = await fetch("/api/flowers", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message,
-              x: px,
-              y: py,
-              z: pz,
-              family: variant,
-              variant,
-            }),
+            body: JSON.stringify({ message, x: px, y: py, z: pz, variant }),
           });
 
-          let apiError = `HTTP ${res.status}`;
           let json: unknown = null;
           try {
             json = await res.json();
-            if (isRecord(json) && typeof json.error === "string")
-              apiError = json.error;
-          } catch {
-            /* ignore */
-          }
-          if (!res.ok) throw new Error(apiError);
+          } catch {}
 
-          const real: unknown = isRecord(json) ? json.flower : null;
+          if (!res.ok) {
+            const apiError =
+              isRecord(json) && typeof json.error === "string"
+                ? json.error
+                : `HTTP ${res.status}`;
+            throw new Error(apiError);
+          }
+
+          const real = isRecord(json)
+            ? (json as { flower?: Flower }).flower ?? null
+            : null;
           const ok =
             isRecord(real) &&
-            typeof real.id === "string" &&
-            "created_at" in real;
+            typeof (real as Flower).id === "string" &&
+            "created_at" in (real as Flower);
 
           const withPos: Flower | null = ok
-            ? ({
-                ...(real as Record<string, unknown>),
-                x: px,
-                y: py,
-                z: pz,
-              } as Flower)
+            ? ({ ...(real as Flower), x: px, y: py, z: pz } as Flower)
             : null;
 
           const prev = current?.flowers ?? [];
-          const next = [withPos, ...prev].filter(Boolean) as Flower[];
-          return { flowers: next };
+          return { flowers: [withPos, ...prev].filter(Boolean) as Flower[] };
         },
         {
           optimisticData: { flowers: [optimistic, ...(data?.flowers ?? [])] },
           rollbackOnError: true,
           revalidate: true,
-          populateCache: (result, current) => {
-            const posById = new Map(
-              (current?.flowers ?? []).map((f) => [
-                f.id,
-                { x: f.x, y: f.y, z: f.z },
-              ])
-            );
-            return {
-              flowers: (result?.flowers ?? []).map((f) => {
-                const p = posById.get(f.id);
-                return p ? ({ ...f, ...p } as Flower) : f;
-              }),
-            };
-          },
         }
       );
     } catch (err: unknown) {
@@ -247,19 +164,20 @@ export default function GardenOverlay() {
 
   return (
     <div className="garden-overlay" aria-live="polite">
-      {/* -------- contador chiquito arriba-izq -------- */}
+      {/* Chip contador (arriba-izq) */}
       <div className="counter-chip" title="Cantidad total de flores">
         Últimas flores: <strong>{isLoading ? "…" : total}</strong>
       </div>
 
-      {/* -------- panel plantar (abajo-izq) -------- */}
+      {/* Panel plantar — SIEMPRE centrado y de ancho fluido */}
       <form
-        className="panel panel-plant"
+        className="panel panel-plant plant-bar"
         onSubmit={onSubmit}
         aria-busy={pending}
       >
-        <div className="panel-title">Plantar</div>
-        <div className="row">
+        <div className="panel-title">Plantar una flor</div>
+
+        <div className="plant-row">
           <label htmlFor="plant-msg" className="sr-only">
             Mensaje (opcional, 140 máx.)
           </label>
@@ -268,15 +186,49 @@ export default function GardenOverlay() {
             name="message"
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
-            placeholder="Escribí un mensaje (opcional, máx. 140)"
+            placeholder="Dejar un mensaje…"
             maxLength={140}
-            className="input input-sm"
+            className="input input-grow"
             autoComplete="off"
             disabled={pending}
           />
+
+          {/* Selector compacto con flechas pegadas a la flor */}
+          <div className="picker" aria-label="Elegir tipo de flor" role="group">
+            <button
+              type="button"
+              className="picker-btn"
+              onClick={() =>
+                setIdx((i) => (i + VARIANTS.length - 1) % VARIANTS.length)
+              }
+              aria-label="Anterior"
+              disabled={pending}
+            >
+              ←
+            </button>
+
+            <div
+              className="picker-current"
+              title={labelFor(variant)}
+              aria-live="polite"
+            >
+              <VariantIcon v={variant} />
+            </div>
+
+            <button
+              type="button"
+              className="picker-btn"
+              onClick={() => setIdx((i) => (i + 1) % VARIANTS.length)}
+              aria-label="Siguiente"
+              disabled={pending}
+            >
+              →
+            </button>
+          </div>
+
           <button
             type="submit"
-            className="btn btn-sm"
+            className="btn btn-cta"
             aria-disabled={pending}
             disabled={pending}
             title="Plantar"
@@ -284,6 +236,7 @@ export default function GardenOverlay() {
             {pending ? "Plantando…" : "Plantar"}
           </button>
         </div>
+
         {error && (
           <div role="status" className="hint mt-8">
             No se pudieron cargar las flores.
@@ -296,16 +249,7 @@ export default function GardenOverlay() {
         )}
       </form>
 
-      {/* -------- selector radial (abajo-der) -------- */}
-      <RadialPicker
-        selected={idx}
-        setSelected={(i) => setIdx(i)}
-        disabled={pending}
-        renderIcon={(i) => <Preview variant={VARIANTS[i]!} size={36} />}
-        labels={["Rosa", "Tulipán", "Margarita"]}
-      />
-
-      {/* estilos locales del overlay (cosas que no están en globals.css) */}
+      {/* Estilos locales del overlay */}
       <style jsx>{`
         .counter-chip {
           position: absolute;
@@ -319,147 +263,107 @@ export default function GardenOverlay() {
           pointer-events: auto;
           box-shadow: var(--shadow-lg);
         }
-      `}</style>
-    </div>
-  );
-}
 
-/* ---------- Selector radial (¼ círculo) ---------- */
-function RadialPicker({
-  selected,
-  setSelected,
-  disabled,
-  renderIcon,
-  labels,
-}: {
-  selected: number;
-  setSelected: (n: number) => void;
-  disabled?: boolean;
-  renderIcon: (i: number) => React.ReactNode;
-  labels: string[];
-}) {
-  const R = 180; // radio del cuarto de círculo
-  const cx = R;
-  const cy = R;
-  const slices = 3;
-  const step = Math.PI / 2 / slices; // 90° / 3
-  const start0 = Math.PI; // desde la izquierda hacia arriba
-
-  const paths = Array.from({ length: slices }, (_, i) => {
-    const a0 = start0 + i * step;
-    const a1 = a0 + step;
-    const p0 = { x: cx + R * Math.cos(a0), y: cy + R * Math.sin(a0) };
-    const p1 = { x: cx + R * Math.cos(a1), y: cy + R * Math.sin(a1) };
-    const d = `M ${cx} ${cy} L ${p0.x} ${p0.y} A ${R} ${R} 0 0 1 ${p1.x} ${p1.y} Z`;
-    const midA = (a0 + a1) / 2;
-    const ix = cx + R * 0.62 * Math.cos(midA);
-    const iy = cy + R * 0.62 * Math.sin(midA);
-    return { d, ix, iy };
-  });
-
-  return (
-    <div className="radial">
-      <svg
-        viewBox={`0 0 ${R} ${R}`}
-        width={R}
-        height={R}
-        aria-label="Elegir flor"
-        // ❌ evitamos el borde blanco de focus
-        tabIndex={-1}
-      >
-        <defs>
-          <filter
-            id="radial-shadow"
-            x="-50%"
-            y="-50%"
-            width="200%"
-            height="200%"
-          >
-            <feDropShadow
-              dx="0"
-              dy="4"
-              stdDeviation="6"
-              floodColor="black"
-              floodOpacity="0.35"
-            />
-          </filter>
-        </defs>
-
-        {/* base del cuarto de círculo */}
-        <path
-          d={`M ${cx} ${cy} L 0 ${cy} A ${R} ${R} 0 0 1 ${cx} 0 Z`}
-          fill="rgba(14,16,18,0.78)"
-          stroke="rgba(255,255,255,0.12)"
-          filter="url(#radial-shadow)"
-        />
-
-        {paths.map((p, i) => (
-          <g key={i} className={`slice ${i === selected ? "on" : ""}`}>
-            <path
-              d={p.d}
-              fill={i === selected ? "rgba(255,255,255,0.12)" : "transparent"}
-              stroke="rgba(255,255,255,0.12)"
-              onClick={() => !disabled && setSelected(i)}
-              role="button"
-              aria-label={labels[i]}
-              aria-pressed={i === selected}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") setSelected(i);
-              }}
-            />
-            {/* Ícono dentro del SVG (sin foreignObject) */}
-            <g transform={`translate(${p.ix - 18}, ${p.iy - 18})`}>
-              <g className="icon">{renderIcon(i)}</g>
-            </g>
-          </g>
-        ))}
-      </svg>
-
-      <style jsx>{`
-        .radial {
+        /* Barra plantar centrada y fluida */
+        .plant-bar {
           position: absolute;
-          right: calc(8px + var(--sa-r));
-          bottom: calc(8px + var(--sa-b));
+          left: 50%;
+          transform: translateX(-50%);
+          bottom: max(12px, calc(12px + var(--sa-b)));
+          width: min(880px, calc(100vw - 24px - var(--sa-l) - var(--sa-r)));
           pointer-events: auto;
-          user-select: none;
         }
-        /* nada de rectángulo blanco */
-        .radial :global(svg),
-        .radial :global(svg:focus),
-        .radial :global(svg:focus-visible),
-        .radial :global(svg *:focus) {
-          outline: none !important;
+
+        .plant-row {
+          display: grid;
+          grid-template-columns: 1fr auto auto;
+          gap: 10px;
+          align-items: center;
         }
-        .slice path {
-          cursor: pointer;
-          transition: fill 160ms var(--easing), stroke 160ms var(--easing);
+
+        .input-grow {
+          min-width: 0; /* evita overflow en móviles */
         }
-        .slice:hover path {
-          fill: rgba(255, 255, 255, 0.08);
+
+        .picker {
+          display: grid;
+          grid-auto-flow: column;
+          align-items: center;
+          gap: 6px;
+          background: rgba(0, 0, 0, 0.22);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          padding: 6px;
+          border-radius: 12px;
         }
-        /* Focus accesible sin borde rectangular */
-        .slice path:focus-visible {
-          stroke: rgba(255, 255, 255, 0.6);
-          stroke-width: 2;
-        }
-        .slice.on path {
-          fill: rgba(255, 255, 255, 0.12);
-        }
-        .icon {
+        .picker-btn {
           width: 36px;
           height: 36px;
           display: grid;
           place-items: center;
-          pointer-events: none; /* para no robar clicks */
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          font-weight: 700;
+          line-height: 1;
         }
-        @media (max-width: 720px) {
-          :global(.radial svg) {
-            width: 140px !important;
-            height: 140px !important;
+        .picker-current {
+          width: 36px;
+          height: 36px;
+          display: grid;
+          place-items: center;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .btn-cta {
+          font-weight: 800;
+        }
+
+        /* Ajustes específicos mobile: mismo layout y centrado */
+        @media (max-width: 560px) {
+          .plant-row {
+            grid-template-columns: 1fr auto auto;
+            gap: 8px;
+          }
+          .picker,
+          .picker-btn,
+          .picker-current {
+            border-radius: 10px;
+          }
+          .picker-btn,
+          .picker-current {
+            width: 34px;
+            height: 34px;
+          }
+        }
+        /* Solo placeholder más chico en pantallas móviles */
+        @media (max-width: 560px) {
+          .panel-plant .input::placeholder {
+            font-size: 12px;
+          }
+          /* Prefijos por compatibilidad */
+          .panel-plant .input::-webkit-input-placeholder {
+            font-size: 12px;
+          }
+          .panel-plant .input::-moz-placeholder {
+            font-size: 12px;
+          }
+          .panel-plant .input:-ms-input-placeholder {
+            font-size: 12px;
+          }
+          .panel-plant .input::-ms-input-placeholder {
+            font-size: 12px;
           }
         }
       `}</style>
     </div>
   );
+}
+
+/* helpers */
+function labelFor(v: Variant) {
+  if (v === "tulip") return "Tulipán";
+  if (v === "daisy") return "Margarita";
+  return "Rosa";
 }

@@ -22,6 +22,7 @@ export type Flower = {
   updated_at?: ISODateString | null;
   user_id?: string | null;
 
+  alive?: boolean;
   wilted?: boolean | null;
   revived_at?: ISODateString | null;
   state?: FlowerState | null;
