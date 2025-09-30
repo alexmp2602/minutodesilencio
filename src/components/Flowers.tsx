@@ -5,15 +5,21 @@ import { useMemo, useState } from "react";
 import useSWR from "swr";
 import type { Flower } from "@/lib/types";
 import { fetcher } from "@/lib/fetcher";
-import { Instances, Instance, Html, useCursor } from "@react-three/drei";
+import {
+  Instances,
+  Instance,
+  Html,
+  Billboard,
+  useCursor,
+} from "@react-three/drei";
 
 type FlowersResponse = { flowers: Flower[] };
 
-const CAP = 640; // límite razonable
-const VARIANTS = ["rose", "tulip", "daisy"] as const;
-type Variant = (typeof VARIANTS)[number];
+const CAP = 640;
+type VARIANTS = ["rose", "tulip", "daisy"];
+type Variant = VARIANTS[number];
 
-/* ---- utils livianos ---- */
+/* ---- utils ---- */
 function seedFromString(str: string) {
   let h = 1779033703 ^ str.length;
   for (let i = 0; i < str.length; i++) {
@@ -27,7 +33,6 @@ function seedFromString(str: string) {
     return (t & 0xffff) / 0xffff;
   };
 }
-
 function colorFromId(id: string) {
   const rnd = seedFromString(id);
   const h = rnd();
@@ -48,7 +53,6 @@ function colorFromId(id: string) {
   const m = v - c;
   return new THREE.Color(r + m, g + m, b + m);
 }
-
 function positionFor(f: Flower): [number, number, number] {
   const has = f as Record<string, unknown>;
   if (
@@ -63,6 +67,14 @@ function positionFor(f: Flower): [number, number, number] {
   const a = rnd() * Math.PI * 2;
   return [Math.cos(a) * r, 0, Math.sin(a) * r];
 }
+function getUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("ms:userId");
+}
+function getUserName(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("ms:userName");
+}
 
 /* ---- componente ---- */
 export default function Flowers() {
@@ -73,42 +85,70 @@ export default function Flowers() {
   const [hoverId, setHoverId] = useState<string | null>(null);
   useCursor(Boolean(hoverId));
 
+  const myId = getUserId();
+  const myName = getUserName();
+
   const items = useMemo(() => {
     const list = data?.flowers ?? [];
     return list.slice(0, CAP).map((f) => {
       const pos = positionFor(f);
       const rnd = seedFromString(f.id);
 
-      // tamaños más grandes y balanceados
-      const stemH = 0.55 + rnd() * 0.55; // antes 0.4..0.85 → ahora 0.55..1.1
-      const bloomR = 0.11 + rnd() * 0.09; // antes 0.06..0.12 → ahora 0.11..0.20
+      const stemH = 0.55 + rnd() * 0.55;
+      const bloomR = 0.11 + rnd() * 0.09;
 
-      const colorStr = (f as Flower).color;
+      // Define a type with optional properties for flower extensions
+      type FlowerExtra = {
+        color?: string;
+        variant?: string;
+        family?: string;
+        alive?: boolean;
+        user_id?: string;
+        message?: string;
+        x?: number;
+        y?: number;
+        z?: number;
+      };
+      const flowerExtra = f as Flower & FlowerExtra;
+
+      const colorStr = flowerExtra.color;
       let color =
         typeof colorStr === "string" && colorStr
           ? new THREE.Color(colorStr)
           : colorFromId(f.id);
 
-      const rawVar = (f as Flower).variant ?? (f as Flower).family;
+      const rawVar = flowerExtra.variant ?? flowerExtra.family;
       const variant: Variant =
-        typeof rawVar === "string" && VARIANTS.includes(rawVar as Variant)
+        typeof rawVar === "string" &&
+        (["rose", "tulip", "daisy"] as const).includes(rawVar)
           ? (rawVar as Variant)
           : "rose";
 
       const alive =
-        typeof (f as Flower).alive === "boolean" ? (f as Flower).alive : true;
-
+        typeof flowerExtra.alive === "boolean" ? flowerExtra.alive : true;
       if (!alive) color = color.clone().lerp(new THREE.Color("#777"), 0.4);
 
-      // caída sutil en marchitas
       const tiltA = rnd() * Math.PI * 2;
       const tilt = !alive ? 0.35 + rnd() * 0.2 : 0;
       const rotX = Math.cos(tiltA) * tilt;
       const rotZ = Math.sin(tiltA) * tilt;
 
-      return { f, pos, stemH, bloomR, color, variant, alive, rotX, rotZ };
+      const isMine = myId && (flowerExtra.user_id === myId);
+
+      return {
+        f,
+        pos,
+        stemH,
+        bloomR,
+        color,
+        variant,
+        alive,
+        rotX,
+        rotZ,
+        isMine,
+      };
     });
-  }, [data?.flowers]);
+  }, [data?.flowers, myId]);
 
   const roses = items.filter((it) => it.variant === "rose");
   const tulips = items.filter((it) => it.variant === "tulip");
@@ -116,7 +156,7 @@ export default function Flowers() {
 
   return (
     <>
-      {/* Tallos un pelín más gruesos */}
+      {/* Tallos */}
       <Instances limit={CAP} range={items.length}>
         <cylinderGeometry args={[0.016, 0.028, 1, 6]} />
         <meshStandardMaterial roughness={0.95} />
@@ -143,46 +183,126 @@ export default function Flowers() {
       <Instances limit={CAP} range={roses.length}>
         <sphereGeometry args={[1, 16, 16]} />
         <meshStandardMaterial roughness={0.55} metalness={0.04} />
-        {roses.map(({ f, pos, stemH, bloomR, color, rotX, rotZ, alive }) => (
-          <Instance
-            key={`rose-${f.id}`}
-            position={[pos[0], stemH + bloomR * (alive ? 1.1 : 0.85), pos[2]]}
-            scale={[bloomR, bloomR, bloomR]}
-            rotation={[rotX, 0, rotZ]}
-            color={color.getStyle()}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHoverId(f.id);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoverId((id) => (id === f.id ? null : id));
-            }}
-          />
-        ))}
+        {roses.map(
+          ({ f, pos, stemH, bloomR, color, rotX, rotZ, alive, isMine }) => (
+            <group key={`rose-g-${f.id}`}>
+              <Instance
+                key={`rose-${f.id}`}
+                position={[
+                  pos[0],
+                  stemH + bloomR * (alive ? 1.1 : 0.85),
+                  pos[2],
+                ]}
+                scale={[bloomR, bloomR, bloomR]}
+                rotation={[rotX, 0, rotZ]}
+                color={color.getStyle()}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHoverId(f.id);
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHoverId((id) => (id === f.id ? null : id));
+                }}
+              />
+              {isMine && (
+                <>
+                  <Billboard position={[pos[0], stemH + bloomR * 1.22, pos[2]]}>
+                    <mesh scale={[bloomR * 4.5, bloomR * 4.5, 1]}>
+                      <circleGeometry args={[1, 32]} />
+                      <meshBasicMaterial
+                        color={new THREE.Color(color).multiplyScalar(1.2)}
+                        transparent
+                        opacity={0.18}
+                        depthWrite={false}
+                        blending={THREE.AdditiveBlending}
+                      />
+                    </mesh>
+                  </Billboard>
+                  <Html
+                    position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
+                    center
+                    distanceFactor={8}
+                    style={{
+                      padding: "4px 8px",
+                      background: "rgba(0,0,0,.55)",
+                      color: "#fff",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      border: "1px solid rgba(255,255,255,.14)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {myName ? `Tu flor • ${myName}` : "Tu flor"}
+                  </Html>
+                </>
+              )}
+            </group>
+          )
+        )}
       </Instances>
 
       {/* TULIPANES */}
       <Instances limit={CAP} range={tulips.length}>
         <coneGeometry args={[1, 1.8, 12]} />
         <meshStandardMaterial roughness={0.56} metalness={0.035} />
-        {tulips.map(({ f, pos, stemH, bloomR, color, rotX, rotZ, alive }) => (
-          <Instance
-            key={`tulip-${f.id}`}
-            position={[pos[0], stemH + bloomR * (alive ? 1.28 : 1.0), pos[2]]}
-            scale={[bloomR * 0.88, bloomR * 1.34, bloomR * 0.88]}
-            rotation={[rotX, 0, rotZ]}
-            color={color.getStyle()}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHoverId(f.id);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoverId((id) => (id === f.id ? null : id));
-            }}
-          />
-        ))}
+        {tulips.map(
+          ({ f, pos, stemH, bloomR, color, rotX, rotZ, alive, isMine }) => (
+            <group key={`tulip-g-${f.id}`}>
+              <Instance
+                key={`tulip-${f.id}`}
+                position={[
+                  pos[0],
+                  stemH + bloomR * (alive ? 1.28 : 1.0),
+                  pos[2],
+                ]}
+                scale={[bloomR * 0.88, bloomR * 1.34, bloomR * 0.88]}
+                rotation={[rotX, 0, rotZ]}
+                color={color.getStyle()}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHoverId(f.id);
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHoverId((id) => (id === f.id ? null : id));
+                }}
+              />
+              {isMine && (
+                <>
+                  <Billboard position={[pos[0], stemH + bloomR * 1.3, pos[2]]}>
+                    <mesh scale={[bloomR * 4.2, bloomR * 4.2, 1]}>
+                      <circleGeometry args={[1, 32]} />
+                      <meshBasicMaterial
+                        color={new THREE.Color(color).multiplyScalar(1.2)}
+                        transparent
+                        opacity={0.18}
+                        depthWrite={false}
+                        blending={THREE.AdditiveBlending}
+                      />
+                    </mesh>
+                  </Billboard>
+                  <Html
+                    position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
+                    center
+                    distanceFactor={8}
+                    style={{
+                      padding: "4px 8px",
+                      background: "rgba(0,0,0,.55)",
+                      color: "#fff",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      border: "1px solid rgba(255,255,255,.14)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {myName ? `Tu flor • ${myName}` : "Tu flor"}
+                  </Html>
+                </>
+              )}
+            </group>
+          )
+        )}
       </Instances>
 
       {/* MARGARITAS (anillo + centro) */}
@@ -193,61 +313,87 @@ export default function Flowers() {
           metalness={0.02}
           side={THREE.DoubleSide}
         />
-        {daisies.map(({ f, pos, stemH, bloomR, color, rotX, rotZ, alive }) => (
-          <Instance
-            key={`daisy-${f.id}`}
-            position={[
-              pos[0],
-              stemH + (alive ? bloomR * 1.05 : bloomR * 0.85),
-              pos[2],
-            ]}
-            scale={[bloomR, bloomR, bloomR]}
-            rotation={[-Math.PI / 2 + rotX * 0.6, 0, rotZ * 0.6]}
-            color={color.getStyle()}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHoverId(f.id);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoverId((id) => (id === f.id ? null : id));
-            }}
-          />
-        ))}
-      </Instances>
-
-      <Instances limit={CAP} range={daisies.length}>
-        <sphereGeometry args={[1, 12, 12]} />
-        <meshStandardMaterial
-          color={"#ffe39e"}
-          roughness={0.5}
-          metalness={0.02}
-        />
-        {daisies.map(({ f, pos, stemH, bloomR, rotX, rotZ, alive }) => (
-          <Instance
-            key={`daisy-center-${f.id}`}
-            position={[
-              pos[0],
-              stemH + 0.05 + (alive ? bloomR * 1.05 : bloomR * 0.85),
-              pos[2],
-            ]}
-            scale={[bloomR * 0.3, bloomR * 0.3, bloomR * 0.3]}
-            rotation={[rotX * 0.6, 0, rotZ * 0.6]}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHoverId(f.id);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoverId((id) => (id === f.id ? null : id));
-            }}
-          />
-        ))}
+        {daisies.map(
+          ({ f, pos, stemH, bloomR, color, rotX, rotZ, alive, isMine }) => (
+            <group key={`daisy-g-${f.id}`}>
+              <Instance
+                key={`daisy-${f.id}`}
+                position={[
+                  pos[0],
+                  stemH + (alive ? bloomR * 1.05 : bloomR * 0.85),
+                  pos[2],
+                ]}
+                scale={[bloomR, bloomR, bloomR]}
+                rotation={[-Math.PI / 2 + rotX * 0.6, 0, rotZ * 0.6]}
+                color={color.getStyle()}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHoverId(f.id);
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHoverId((id) => (id === f.id ? null : id));
+                }}
+              />
+              {/* centro */}
+              <mesh
+                position={[
+                  pos[0],
+                  stemH + 0.05 + (alive ? bloomR * 1.05 : bloomR * 0.85),
+                  pos[2],
+                ]}
+                scale={[bloomR * 0.3, bloomR * 0.3, bloomR * 0.3]}
+              >
+                <sphereGeometry args={[1, 12, 12]} />
+                <meshStandardMaterial
+                  color={"#ffe39e"}
+                  roughness={0.5}
+                  metalness={0.02}
+                />
+              </mesh>
+              {isMine && (
+                <>
+                  <Billboard position={[pos[0], stemH + bloomR * 1.18, pos[2]]}>
+                    <mesh scale={[bloomR * 4.2, bloomR * 4.2, 1]}>
+                      <circleGeometry args={[1, 32]} />
+                      <meshBasicMaterial
+                        color={new THREE.Color(color).multiplyScalar(1.2)}
+                        transparent
+                        opacity={0.18}
+                        depthWrite={false}
+                        blending={THREE.AdditiveBlending}
+                      />
+                    </mesh>
+                  </Billboard>
+                  <Html
+                    position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
+                    center
+                    distanceFactor={8}
+                    style={{
+                      padding: "4px 8px",
+                      background: "rgba(0,0,0,.55)",
+                      color: "#fff",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      border: "1px solid rgba(255,255,255,.14)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {myName ? `Tu flor • ${myName}` : "Tu flor"}
+                  </Html>
+                </>
+              )}
+            </group>
+          )
+        )}
       </Instances>
 
       {/* Mensajes en hover (se mantiene) */}
-      {items.map(({ f, pos, stemH, bloomR }) =>
-        f.message ? (
+      {items.map(({ f, pos, stemH, bloomR }) => {
+        // Define a type with the message property
+        type FlowerWithMessage = Flower & { message?: string };
+        const flowerWithMessage = f as FlowerWithMessage;
+        return flowerWithMessage.message ? (
           <Html
             key={`tip-${f.id}`}
             position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
@@ -267,10 +413,10 @@ export default function Flowers() {
               whiteSpace: "pre-wrap",
             }}
           >
-            {f.message}
+            {flowerWithMessage.message as string}
           </Html>
-        ) : null
-      )}
+        ) : null;
+      })}
     </>
   );
 }

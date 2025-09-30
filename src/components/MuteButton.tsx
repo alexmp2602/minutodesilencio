@@ -54,7 +54,7 @@ export default function MuteButton({
       ? {
           position: "absolute",
           right: offset?.right ?? 14,
-          top: offset?.bottom ?? 14,
+          bottom: offset?.bottom ?? 70,
           zIndex: 3,
         }
       : {};

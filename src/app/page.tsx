@@ -7,7 +7,6 @@ import Ritual from "@/components/Ritual";
 import Scene from "@/components/Scene";
 import GardenOverlay from "@/components/GardenOverlay";
 import AmbientAudio from "@/components/AmbientAudio";
-import MuteButton from "@/components/MuteButton";
 import { useAppStore } from "@/store/useAppStore";
 
 export default function HomePage() {
@@ -66,8 +65,6 @@ export default function HomePage() {
       {/* Overlay de UI */}
       <GardenOverlay />
 
-      {/* Control de mute */}
-      <MuteButton />
     </main>
   );
 }
