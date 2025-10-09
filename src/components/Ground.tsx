@@ -2,28 +2,49 @@
 "use client";
 
 import * as THREE from "three";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useThree } from "@react-three/fiber";
+
+type Props = {
+  /** Tamaño del plano de terreno (world units) */
+  size?: number;
+  /** Segmentos de la malla (cuadrícula size x size) */
+  segments?: number;
+  /** Amplitud del relieve (altura relativa de colinas) */
+  amplitude?: number;
+  /** Semilla para generar texturas y offsets de forma estable */
+  seed?: number;
+};
+
+/* ===========================
+   RNG determinístico ligero
+   =========================== */
+function mulberry32(seed = 1) {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 /* ===========================
    PALETA “SUNSET GRASS”
    =========================== */
 const PALETTE = {
-  // verdes tibios (evitar azulados/menta que lavan la escena)
   baseA: "#5e9836",
   baseB: "#84b94f",
-  centerLift: 0.06, // realce MUY sutil en el centro (antes era demasiado claro)
-  // rugosidad alta y micro-ruido para matar highlights especulares
+  centerLift: 0.06,
   roughMid: "#7a7a7a",
-};
+} as const;
 
 /* ---------- Texturas procedurales (color / rough) ---------- */
-function makeGrassColor(size = 512): THREE.CanvasTexture {
+function makeGrassColor(rng: () => number, size = 512): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d") as CanvasRenderingContext2D;
 
-  // Fondo en dos tonos (sin menta/azulado brillante)
   const cx = size / 2;
   const cy = size / 2;
   const radial = ctx.createRadialGradient(
@@ -39,18 +60,17 @@ function makeGrassColor(size = 512): THREE.CanvasTexture {
   ctx.fillStyle = radial;
   ctx.fillRect(0, 0, size, size);
 
-  // Manchas de pasto (parches) — tonos cercanos para evitar alto contraste
+  // manchas suaves
   for (let i = 0; i < 1300; i++) {
-    const r = Math.random() * (size * 0.03);
-    const x = Math.random() * size;
-    const y = Math.random() * size;
+    const r = rng() * (size * 0.03);
+    const x = rng() * size;
+    const y = rng() * size;
 
-    // variación suave alrededor de los verdes base
     const g1 = new THREE.Color(PALETTE.baseA);
     const g2 = new THREE.Color(PALETTE.baseB);
-    const mix = Math.random() * 0.85 + 0.15;
-    const col = g1.lerp(g2, mix);
-    const a = 0.05 + Math.random() * 0.08;
+    const mix = rng() * 0.85 + 0.15;
+    const col = g1.clone().lerp(g2, mix);
+    const a = 0.05 + rng() * 0.08;
 
     ctx.fillStyle = `rgba(${Math.round(col.r * 255)}, ${Math.round(
       col.g * 255
@@ -60,16 +80,16 @@ function makeGrassColor(size = 512): THREE.CanvasTexture {
     ctx.ellipse(
       x,
       y,
-      r * (0.7 + Math.random() * 0.7),
+      r * (0.7 + rng() * 0.7),
       r,
-      Math.random() * Math.PI,
+      rng() * Math.PI,
       0,
       Math.PI * 2
     );
     ctx.fill();
   }
 
-  // Levantamos muy poquito el centro para “separar” flores (sin brillos)
+  // realce central muy sutil
   if (PALETTE.centerLift > 0) {
     const lift = ctx.createRadialGradient(
       cx,
@@ -87,10 +107,8 @@ function makeGrassColor(size = 512): THREE.CanvasTexture {
     ctx.globalCompositeOperation = "source-over";
   }
 
-  // ⚠️ Quitamos los “puntitos de rocío” blancos (eran los que disparaban el bloom)
-  // (si alguna vez querés habilitarlos, que sea con alpha MUY bajo y threshold alto)
-
   const tex = new THREE.CanvasTexture(c);
+  tex.name = "GroundColor";
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -99,23 +117,21 @@ function makeGrassColor(size = 512): THREE.CanvasTexture {
   return tex;
 }
 
-function makeGrassRough(size = 512): THREE.CanvasTexture {
+function makeGrassRough(rng: () => number, size = 512): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d") as CanvasRenderingContext2D;
 
-  // base de rugosidad media-alta
   ctx.fillStyle = PALETTE.roughMid;
   ctx.fillRect(0, 0, size, size);
 
-  // micro-ruido con orientación alargada para matar highlights especulares
   for (let i = 0; i < 1600; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const w = Math.random() * (size * 0.02) + 1.5;
-    const h = w * (0.8 + Math.random() * 1.2);
-    const rot = Math.random() * Math.PI;
-    const a = Math.random() * 0.2 + 0.06;
+    const x = rng() * size;
+    const y = rng() * size;
+    const w = rng() * (size * 0.02) + 1.5;
+    const h = w * (0.8 + rng() * 1.2);
+    const rot = rng() * Math.PI;
+    const a = rng() * 0.2 + 0.06;
 
     ctx.save();
     ctx.translate(x, y);
@@ -126,6 +142,7 @@ function makeGrassRough(size = 512): THREE.CanvasTexture {
   }
 
   const tex = new THREE.CanvasTexture(c);
+  tex.name = "GroundRough";
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
@@ -138,7 +155,7 @@ function makeHillsGeometry(
   width = 200,
   depth = 200,
   seg = 240,
-  amplitude = 0.6 // ↓ un poco para horizonte más plano (como la foto)
+  amplitude = 0.6
 ) {
   const geo = new THREE.PlaneGeometry(width, depth, seg, seg);
   const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -171,55 +188,86 @@ function makeHillsGeometry(
 }
 
 /* ---------- Componente ---------- */
-export default function Ground() {
+export default function Ground({
+  size = 200,
+  segments = 240,
+  amplitude = 0.6,
+  seed = 1,
+}: Props) {
   const { gl } = useThree();
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  // RNG estable para texturas y offsets
+  const rng = useMemo(() => mulberry32(seed), [seed]);
 
   const { colorMap, roughMap, bumpMap, hillsGeo } = useMemo(() => {
-    const color = makeGrassColor(512);
-    const rough = makeGrassRough(512);
+    const color = makeGrassColor(rng, 512);
+    const rough = makeGrassRough(rng, 512);
 
-    // repetición moderada (menos “patterning” que antes)
-    const repeatU = 14 + Math.random() * 6;
-    const repeatV = 14 + Math.random() * 6;
+    // repetición moderada + offset estable
+    const repeatU = 14 + rng() * 6;
+    const repeatV = 14 + rng() * 6;
     color.repeat.set(repeatU, repeatV);
     rough.repeat.set(repeatU, repeatV);
 
-    const offU = Math.random();
-    const offV = Math.random();
+    const offU = rng();
+    const offV = rng();
     color.offset.set(offU, offV);
     rough.offset.set(offU, offV);
 
-    // Anisotropía suficiente, sin forzar al máximo
+    // Anisotropía cuidada
     const maxAniso = Math.min(8, gl.capabilities.getMaxAnisotropy());
     color.anisotropy = maxAniso;
     rough.anisotropy = maxAniso;
 
+    // Bump derive de rough (relieve micro)
     const bump = rough.clone();
+    bump.name = "GroundBump";
 
-    // Geometría más plana (look “pradera”)
-    const hills = makeHillsGeometry(200, 200, 240, 0.6);
+    const hills = makeHillsGeometry(size, size, segments, amplitude);
+    hills.name = "GroundHills";
 
     return { colorMap: color, roughMap: rough, bumpMap: bump, hillsGeo: hills };
-  }, [gl]);
+    // gl es estable; size/segments/amplitude cambian la geometría
+  }, [gl, size, segments, amplitude, rng]);
+
+  // Malla estática: fijamos matrix una vez
+  useEffect(() => {
+    const m = meshRef.current;
+    if (!m) return;
+    m.updateMatrix();
+  }, []);
+
+  // Limpieza de recursos al desmontar o cambiar parámetros
+  useEffect(() => {
+    return () => {
+      colorMap.dispose();
+      roughMap.dispose();
+      bumpMap.dispose?.();
+      hillsGeo.dispose();
+    };
+  }, [colorMap, roughMap, bumpMap, hillsGeo]);
 
   return (
     <mesh
+      ref={meshRef}
       geometry={hillsGeo}
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0, 0]}
       receiveShadow
       frustumCulled={false}
+      matrixAutoUpdate={false}
+      renderOrder={0}
     >
       <meshStandardMaterial
-        // Color base apenas influye; el map sRGB gobierna
-        color={"#6ea43e"}
+        color={"#6ea43e"} // el map sRGB gobierna
         map={colorMap}
         roughnessMap={roughMap}
-        roughness={0.96} // ↑ más mate
+        roughness={0.96}
         metalness={0.0}
         bumpMap={bumpMap}
-        bumpScale={0.008} // ↓ micro-relieve (evita brillos raros)
-        envMapIntensity={0.15} // leve rebote cálido
+        bumpScale={0.008}
+        envMapIntensity={0.15}
         side={THREE.FrontSide}
         fog
       />

@@ -1,3 +1,4 @@
+// app/components/Flowers.tsx
 "use client";
 
 import * as THREE from "three";
@@ -16,14 +17,14 @@ import {
 type FlowersResponse = { flowers: Flower[] };
 
 const CAP = 640;
-type VARIANTS = ["rose", "tulip", "daisy"];
-type Variant = VARIANTS[number];
+const VARIANTS = ["rose", "tulip", "daisy"] as const;
+type Variant = (typeof VARIANTS)[number];
 
-/* ---- utils ---- */
+/* ---------- utils ---------- */
 function seedFromString(str: string) {
   let h = 1779033703 ^ str.length;
   for (let i = 0; i < str.length; i++) {
-    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = Math.imul(h ^ (str.charCodeAt(i) as number), 3432918353);
     h = (h << 13) | (h >>> 19);
   }
   return () => {
@@ -54,13 +55,12 @@ function colorFromId(id: string) {
   return new THREE.Color(r + m, g + m, b + m);
 }
 function positionFor(f: Flower): [number, number, number] {
-  const has = f as Record<string, unknown>;
   if (
-    typeof has.x === "number" &&
-    typeof has.y === "number" &&
-    typeof has.z === "number"
+    typeof f.x === "number" &&
+    typeof f.y === "number" &&
+    typeof f.z === "number"
   ) {
-    return [has.x as number, has.y as number, has.z as number];
+    return [f.x, f.y, f.z];
   }
   const rnd = seedFromString(f.id);
   const r = 3 + rnd() * 9;
@@ -76,7 +76,7 @@ function getUserName(): string | null {
   return localStorage.getItem("ms:userName");
 }
 
-/* ---- componente ---- */
+/* ---------- componente ---------- */
 export default function Flowers() {
   const { data } = useSWR<FlowersResponse>("/api/flowers", fetcher, {
     revalidateOnFocus: false,
@@ -97,35 +97,16 @@ export default function Flowers() {
       const stemH = 0.55 + rnd() * 0.55;
       const bloomR = 0.11 + rnd() * 0.09;
 
-      // Define a type with optional properties for flower extensions
-      type FlowerExtra = {
-        color?: string;
-        variant?: string;
-        family?: string;
-        alive?: boolean;
-        user_id?: string;
-        message?: string;
-        x?: number;
-        y?: number;
-        z?: number;
-      };
-      const flowerExtra = f as Flower & FlowerExtra;
+      // campos opcionales que pueden o no venir desde la API
+      const colorStr = (f.color ?? undefined) as string | undefined;
+      let color = colorStr ? new THREE.Color(colorStr) : colorFromId(f.id);
 
-      const colorStr = flowerExtra.color;
-      let color =
-        typeof colorStr === "string" && colorStr
-          ? new THREE.Color(colorStr)
-          : colorFromId(f.id);
+      const rawVar = (f.variant ?? f.family) as string | undefined;
+      const variant: Variant = VARIANTS.includes((rawVar ?? "") as Variant)
+        ? (rawVar as Variant)
+        : "rose";
 
-      const rawVar = flowerExtra.variant ?? flowerExtra.family;
-      const variant: Variant =
-        typeof rawVar === "string" &&
-        (["rose", "tulip", "daisy"] as const).includes(rawVar)
-          ? (rawVar as Variant)
-          : "rose";
-
-      const alive =
-        typeof flowerExtra.alive === "boolean" ? flowerExtra.alive : true;
+      const alive = (f.alive ?? (f.wilted ? false : true)) as boolean;
       if (!alive) color = color.clone().lerp(new THREE.Color("#777"), 0.4);
 
       const tiltA = rnd() * Math.PI * 2;
@@ -133,7 +114,7 @@ export default function Flowers() {
       const rotX = Math.cos(tiltA) * tilt;
       const rotZ = Math.sin(tiltA) * tilt;
 
-      const isMine = myId && (flowerExtra.user_id === myId);
+      const isMine = !!myId && f.user_id === myId;
 
       return {
         f,
@@ -150,14 +131,40 @@ export default function Flowers() {
     });
   }, [data?.flowers, myId]);
 
-  const roses = items.filter((it) => it.variant === "rose");
-  const tulips = items.filter((it) => it.variant === "tulip");
-  const daisies = items.filter((it) => it.variant === "daisy");
+  const roses = useMemo(
+    () => items.filter((it) => it.variant === "rose"),
+    [items]
+  );
+  const tulips = useMemo(
+    () => items.filter((it) => it.variant === "tulip"),
+    [items]
+  );
+  const daisies = useMemo(
+    () => items.filter((it) => it.variant === "daisy"),
+    [items]
+  );
+
+  // Item actualmente hovereado (para tooltip/halo único)
+  const hoverItem = useMemo(
+    () => items.find((it) => it.f.id === hoverId),
+    [items, hoverId]
+  );
+
+  // Handler de selección -> zoom/approach opcional (lo escucha la cámara)
+  const handleSelect = (id: string, position: [number, number, number]) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("flower-focus", {
+          detail: { id, position }, // la cámara puede interpolar hacia acá
+        })
+      );
+    }
+  };
 
   return (
     <>
       {/* Tallos */}
-      <Instances limit={CAP} range={items.length}>
+      <Instances name="stems" limit={CAP} range={items.length}>
         <cylinderGeometry args={[0.016, 0.028, 1, 6]} />
         <meshStandardMaterial roughness={0.95} />
         {items.map(({ f, pos, stemH, alive, rotX, rotZ }) => (
@@ -175,12 +182,16 @@ export default function Flowers() {
               e.stopPropagation();
               setHoverId((id) => (id === f.id ? null : id));
             }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSelect(f.id, [pos[0], stemH, pos[2]]);
+            }}
           />
         ))}
       </Instances>
 
-      {/* ROSAS */}
-      <Instances limit={CAP} range={roses.length}>
+      {/* Rosas */}
+      <Instances name="roses" limit={CAP} range={roses.length}>
         <sphereGeometry args={[1, 16, 16]} />
         <meshStandardMaterial roughness={0.55} metalness={0.04} />
         {roses.map(
@@ -204,6 +215,10 @@ export default function Flowers() {
                   e.stopPropagation();
                   setHoverId((id) => (id === f.id ? null : id));
                 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSelect(f.id, [pos[0], stemH + bloomR, pos[2]]);
+                }}
               />
               {isMine && (
                 <>
@@ -223,15 +238,7 @@ export default function Flowers() {
                     position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
                     center
                     distanceFactor={8}
-                    style={{
-                      padding: "4px 8px",
-                      background: "rgba(0,0,0,.55)",
-                      color: "#fff",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      border: "1px solid rgba(255,255,255,.14)",
-                      whiteSpace: "nowrap",
-                    }}
+                    style={tipStyle}
                   >
                     {myName ? `Tu flor • ${myName}` : "Tu flor"}
                   </Html>
@@ -242,8 +249,8 @@ export default function Flowers() {
         )}
       </Instances>
 
-      {/* TULIPANES */}
-      <Instances limit={CAP} range={tulips.length}>
+      {/* Tulipanes */}
+      <Instances name="tulips" limit={CAP} range={tulips.length}>
         <coneGeometry args={[1, 1.8, 12]} />
         <meshStandardMaterial roughness={0.56} metalness={0.035} />
         {tulips.map(
@@ -267,6 +274,10 @@ export default function Flowers() {
                   e.stopPropagation();
                   setHoverId((id) => (id === f.id ? null : id));
                 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSelect(f.id, [pos[0], stemH + bloomR, pos[2]]);
+                }}
               />
               {isMine && (
                 <>
@@ -286,15 +297,7 @@ export default function Flowers() {
                     position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
                     center
                     distanceFactor={8}
-                    style={{
-                      padding: "4px 8px",
-                      background: "rgba(0,0,0,.55)",
-                      color: "#fff",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      border: "1px solid rgba(255,255,255,.14)",
-                      whiteSpace: "nowrap",
-                    }}
+                    style={tipStyle}
                   >
                     {myName ? `Tu flor • ${myName}` : "Tu flor"}
                   </Html>
@@ -305,8 +308,8 @@ export default function Flowers() {
         )}
       </Instances>
 
-      {/* MARGARITAS (anillo + centro) */}
-      <Instances limit={CAP} range={daisies.length}>
+      {/* Margaritas */}
+      <Instances name="daisies" limit={CAP} range={daisies.length}>
         <ringGeometry args={[0.55, 1, 18]} />
         <meshStandardMaterial
           roughness={0.62}
@@ -333,6 +336,10 @@ export default function Flowers() {
                 onPointerOut={(e) => {
                   e.stopPropagation();
                   setHoverId((id) => (id === f.id ? null : id));
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSelect(f.id, [pos[0], stemH + bloomR, pos[2]]);
                 }}
               />
               {/* centro */}
@@ -369,15 +376,7 @@ export default function Flowers() {
                     position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
                     center
                     distanceFactor={8}
-                    style={{
-                      padding: "4px 8px",
-                      background: "rgba(0,0,0,.55)",
-                      color: "#fff",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      border: "1px solid rgba(255,255,255,.14)",
-                      whiteSpace: "nowrap",
-                    }}
+                    style={tipStyle}
                   >
                     {myName ? `Tu flor • ${myName}` : "Tu flor"}
                   </Html>
@@ -388,35 +387,65 @@ export default function Flowers() {
         )}
       </Instances>
 
-      {/* Mensajes en hover (se mantiene) */}
-      {items.map(({ f, pos, stemH, bloomR }) => {
-        // Define a type with the message property
-        type FlowerWithMessage = Flower & { message?: string };
-        const flowerWithMessage = f as FlowerWithMessage;
-        return flowerWithMessage.message ? (
-          <Html
-            key={`tip-${f.id}`}
-            position={[pos[0], stemH + bloomR * 1.8, pos[2]]}
-            center
-            distanceFactor={8}
-            style={{
-              pointerEvents: "none",
-              opacity: hoverId === f.id ? 1 : 0,
-              transition: "opacity .15s ease",
-              background: "rgba(0,0,0,.5)",
-              color: "white",
-              padding: "6px 8px",
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,.12)",
-              backdropFilter: "blur(4px)",
-              maxWidth: 220,
-              whiteSpace: "pre-wrap",
-            }}
+      {/* ----------------------------- */}
+      {/* Tooltip + halo SOLO para hover */}
+      {/* ----------------------------- */}
+      {hoverItem && (
+        <>
+          {/* Halo sutil de hover */}
+          <Billboard
+            position={[
+              hoverItem.pos[0],
+              hoverItem.stemH + hoverItem.bloomR * 1.1,
+              hoverItem.pos[2],
+            ]}
           >
-            {flowerWithMessage.message as string}
-          </Html>
-        ) : null;
-      })}
+            <mesh
+              scale={[hoverItem.bloomR * 5.2, hoverItem.bloomR * 5.2, 1]}
+              renderOrder={999}
+            >
+              <circleGeometry args={[1, 32]} />
+              <meshBasicMaterial
+                color={hoverItem.color.clone().multiplyScalar(1.3)}
+                transparent
+                opacity={0.18}
+                depthWrite={false}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+          </Billboard>
+
+          {/* Tooltip si la flor tiene mensaje */}
+          {hoverItem.f.message && (
+            <Html
+              position={[
+                hoverItem.pos[0],
+                hoverItem.stemH + hoverItem.bloomR * 1.8,
+                hoverItem.pos[2],
+              ]}
+              center
+              distanceFactor={8}
+              style={{
+                ...tipStyle,
+                pointerEvents: "none",
+                transition: "opacity .12s ease",
+              }}
+            >
+              {hoverItem.f.message}
+            </Html>
+          )}
+        </>
+      )}
     </>
   );
 }
+
+/* ---------- styles ---------- */
+const tipStyle: React.CSSProperties = {
+  padding: "4px 8px",
+  background: "rgba(0,0,0,.55)",
+  color: "#fff",
+  borderRadius: 8,
+  fontSize: 12,
+  border: "1px solid rgba(255,255,255,.14)",
+};

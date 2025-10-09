@@ -1,70 +1,54 @@
-// app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import Intro from "@/components/Intro";
-import Ritual from "@/components/Ritual";
-import Scene from "@/components/Scene";
-import GardenOverlay from "@/components/GardenOverlay";
-import AmbientAudio from "@/components/AmbientAudio";
-import { useAppStore } from "@/store/useAppStore";
+import UnifiedParallaxWorld from "@/components/UnifiedParallaxWorld";
+import useScrollParallax from "@/hooks/useScrollParallax";
+import useSectionProgress from "@/hooks/useSectionProgress";
+import TextOverlay from "@/components/TextOverlay";
+import MinuteRitual from "@/components/ui/MinuteRitual";
 
 export default function HomePage() {
-  const { stage, setStage } = useAppStore();
-  const mainRef = useRef<HTMLElement>(null);
+  // Intro (cielo + mensajes)
+  const { progress: introProgress, skyProps } = useScrollParallax();
+  // Sección “minuto”
+  const { progress: minuteProgress, bind: minuteBind } = useSectionProgress();
 
-  // Accesibilidad: al entrar al jardín, llevar el foco al <main>
-  useEffect(() => {
-    if (stage === "garden") mainRef.current?.focus();
-  }, [stage]);
-
-  // Texto accesible del estado actual (anunciado por sr-only)
-  const stageLabel = useMemo(() => {
-    switch (stage) {
-      case "intro":
-        return "Pantalla de introducción";
-      case "ritual":
-        return "Ritual de 60 segundos";
-      case "transition":
-        return "Transición hacia el jardín";
-      case "garden":
-        return "Jardín interactivo";
-      default:
-        return "Cargando…";
-    }
-  }, [stage]);
-
-  if (stage === "intro") {
-    return <Intro onStart={() => setStage("ritual")} />;
-  }
-
-  if (stage === "ritual" || stage === "transition") {
-    return <Ritual onComplete={() => setStage("garden")} />;
-  }
-
-  // Jardín
   return (
-    <main
-      id="main"
-      ref={mainRef}
-      className="screen-immersive"
-      tabIndex={-1} // permite foco programático
-      aria-label="Escena principal"
-    >
-      {/* Anuncio discreto de cambios de etapa para lectores de pantalla */}
-      <span className="sr-only" aria-live="polite" aria-atomic="true">
-        {stageLabel}
-      </span>
+    <main className="parallax-root" aria-label="Recorrido continuo">
+      {/* Canvas pegado a la ventana - un solo scrollbar */}
+      <div className="sticky-canvas">
+        <UnifiedParallaxWorld
+          introProgress={introProgress}
+          minuteProgress={minuteProgress}
+        />
+      </div>
 
-      {/* Audio ambiental (montado aquí para respetar autoplay policies) */}
-      <AmbientAudio src="/ambience-nature.mp3" volume={0.15} />
+      {/* Intro: cielo + mensajes */}
+      <section {...skyProps} style={{ height: "150vh" }} aria-hidden />
 
-      {/* Escena 3D síncrona: evita el error de contexto WebGL nulo */}
-      <Scene />
+      <TextOverlay progress={introProgress} />
 
-      {/* Overlay de UI */}
-      <GardenOverlay />
+      {/* Sección del minuto — durante esto NO se puede avanzar */}
+      <section
+        {...minuteBind}
+        style={{
+          height: "170vh",
+          display: "grid",
+          placeItems: "center",
+          padding: "24px",
+        }}
+      >
+        <MinuteRitual
+          visibleK={minuteProgress}
+          durationMs={60000}
+          onComplete={() => {
+            // opcional: podrías registrar analytics / vibración leve, etc.
+          }}
+        />
+      </section>
 
+      {/* Runway para que, una vez terminado el minuto, el usuario baje y
+          la cámara descienda hasta el jardín */}
+      <section aria-hidden style={{ height: "160vh" }} />
     </main>
   );
 }

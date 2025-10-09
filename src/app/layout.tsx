@@ -1,33 +1,26 @@
-// app/layout.tsx
+// src/app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import localFont from "next/font/local";
-import { Open_Sans, Lekton } from "next/font/google";
-
-const catchy = localFont({
-  src: [
-    {
-      path: "../../public/fonts/CatchyMager.woff2",
-      weight: "400",
-      style: "normal",
-    },
-  ],
-  variable: "--font-catchy",
-  display: "swap",
-  preload: true,
-});
+import { Open_Sans, Lekton, Cormorant_Garamond } from "next/font/google";
+import Providers from "./providers";
 
 const openSans = Open_Sans({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-ui",
 });
-
 const lekton = Lekton({
   subsets: ["latin"],
   weight: ["400", "700"],
   display: "swap",
   variable: "--font-lekton",
+});
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  style: ["normal", "italic"],
+  display: "swap",
+  variable: "--font-serif",
 });
 
 export const viewport: Viewport = {
@@ -43,19 +36,13 @@ const siteName = "Minuto de Silencio";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: siteName,
-  title: {
-    default: siteName,
-    template: "%s · Minuto de Silencio",
-  },
+  title: { default: siteName, template: "%s · Minuto de Silencio" },
   description:
     "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
-  alternates: {
-    canonical: siteUrl + "/",
-  },
-  other: {
-    "color-scheme": "dark light",
-  },
-  manifest: "/site.webmanifest",
+  alternates: { canonical: siteUrl + "/" },
+  other: { "color-scheme": "dark light" },
+  // 🔧 Alineado con el archivo real en /public/manifest.webmanifest
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
@@ -91,9 +78,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" dir="ltr" className="h-full">
+    <html lang="es-AR" dir="ltr" className="h-full" suppressHydrationWarning>
       <head>
-        {/* Preloads de assets críticos */}
+        {/* Preloads clave del proyecto */}
         <link
           rel="preload"
           href="/ambience-soft.mp3"
@@ -108,21 +95,31 @@ export default function RootLayout({
           type="audio/mpeg"
           crossOrigin="anonymous"
         />
+        <link
+          rel="preload"
+          href="/sfx/plant.mp3"
+          as="audio"
+          type="audio/mpeg"
+          crossOrigin="anonymous"
+        />
         <link rel="preload" href="/og.jpg" as="image" type="image/jpeg" />
-
+        {/* Color-scheme explícito para UA que no leen metadata.other */}
+        <meta name="color-scheme" content="dark light" />
       </head>
       <body
-        className={`${openSans.variable} ${catchy.variable} ${lekton.variable} antialiased h-full`}
+        className={[
+          openSans.variable,
+          lekton.variable,
+          cormorant.variable,
+          "antialiased h-full",
+        ].join(" ")}
         suppressHydrationWarning
       >
-        {/* Enlace accesible para saltar al contenido */}
-        <a
-          href="#main"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:bg-white/90 focus:text-black focus:px-3 focus:py-2 focus:rounded"
-        >
-          Saltar al contenido
-        </a>
-        <main id="main">{children}</main>
+        {/* ⬇️ Toda la app (AmbientAudio, GardenOverlay, etc.) queda envuelta por Providers */}
+        <Providers>
+          <main id="main">{children}</main>
+        </Providers>
+        <div id="overlay-root" />
       </body>
     </html>
   );

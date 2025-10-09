@@ -2,19 +2,30 @@
 "use client";
 
 import * as THREE from "three";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 
-/** Interfaz local para el shader que recibimos en onBeforeCompile.
- *  Evita depender de THREE.Shader (que cambia entre typings). */
+/** Interfaz local para el shader que recibimos en onBeforeCompile */
 type GLSLShader = {
   uniforms: Record<string, THREE.IUniform<unknown>>;
   vertexShader: string;
   fragmentShader: string;
 };
 
-/** Misma función de relieves que usa tu Ground (aprox),
- *  para colocar cada brizna a la altura correcta */
+/* ===========================
+   RNG determinístico ligero
+   =========================== */
+function mulberry32(seed = 1) {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Misma función de relieve que usa Ground (aprox) */
 function sampleHillHeight(x: number, z: number, size = 200, amplitude = 0.6) {
   const nx = x / (size / 2);
   const ny = z / (size / 2);
@@ -29,46 +40,70 @@ function sampleHillHeight(x: number, z: number, size = 200, amplitude = 0.6) {
 }
 
 type Props = {
-  count?: number; // cantidad de briznas (instancias)
-  areaSize?: number; // tamaño del terreno a cubrir
-  bladeHeight?: number; // altura media de hoja
-  heightJitter?: number; // variación de altura
-  wind?: number; // intensidad del viento
-  seed?: number; // semilla RNG
+  /** Cantidad de instancias de pasto */
+  count?: number;
+  /** Largo del lado del terreno (debe coincidir con Ground.size) */
+  terrainSize?: number;
+  /** Amplitud del relieve (debe coincidir con Ground.amplitude) */
+  terrainAmplitude?: number;
+  /** Área cuadrada donde se distribuyen las hierbas (centrado en 0,0).
+      Si no se especifica, usa terrainSize. */
+  areaSize?: number;
+  /** Altura media de la hoja */
+  bladeHeight?: number;
+  /** Variación relativa de altura */
+  heightJitter?: number;
+  /** Intensidad del viento */
+  wind?: number;
+  /** Semilla RNG para posiciones/fases determinísticas */
+  seed?: number;
+  /** Color base de hojas (sRGB) */
+  color?: string | number | THREE.Color;
 };
 
 export default function GrassField({
   count = 12000,
-  areaSize = 200,
+  terrainSize = 200,
+  terrainAmplitude = 0.6,
+  areaSize, // ahora se respeta
   bladeHeight = 0.6,
   heightJitter = 0.35,
   wind = 0.8,
   seed = 1,
+  color = "#6ea43e",
 }: Props) {
-  const meshRef = useRef<THREE.InstancedMesh>(null!);
+  const meshRef = useRef<THREE.InstancedMesh>(null);
   const shaderRef = useRef<GLSLShader | null>(null);
 
-  // Geometría base: hoja con 5 segmentos verticales (curva más suave)
+  /* =========
+     Geometría base (hoja con 5 segmentos verticales)
+     ========= */
   const bladeGeom = useMemo(() => {
     const h = 1;
     const w = 0.045;
     const segments = 5;
     const geom = new THREE.PlaneGeometry(w, h, 1, segments);
     geom.translate(0, h / 2, 0); // que y=0 sea la base
+    geom.computeBoundingBox();
+    geom.computeBoundingSphere();
     return geom;
   }, []);
 
-  // Material con bend y viento (guardamos el shader en un ref)
+  /* =========
+     Material con bend y viento (guardamos shader)
+     ========= */
   const material = useMemo(() => {
+    const col = new THREE.Color(color as string | number | THREE.Color);
     const m = new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#6ea43e"),
+      color: col, // se linealiza con renderer sRGB
       roughness: 0.95,
       metalness: 0.0,
       side: THREE.DoubleSide,
+      vertexColors: true, // <- habilitamos colores por instancia
+      toneMapped: true,
     });
 
     m.onBeforeCompile = (shader) => {
-      // uniforms para animación
       (shader.uniforms as GLSLShader["uniforms"]).uTime = { value: 0 };
       (shader.uniforms as GLSLShader["uniforms"]).uWind = { value: wind };
 
@@ -107,35 +142,45 @@ export default function GrassField({
           "#include <color_fragment>",
           `
           // leve gradiente vertical en las hojas
-          diffuseColor.rgb *= mix(vec3(0.95, 0.97, 0.95), vec3(1.05, 1.08, 1.04), clamp(vY, 0.0, 1.0));
+          diffuseColor.rgb *= mix(vec3(0.95, 0.97, 0.95),
+                                  vec3(1.05, 1.08, 1.04),
+                                  clamp(vY, 0.0, 1.0));
           #include <color_fragment>
         `
         );
 
       shaderRef.current = shader as GLSLShader;
-      m.customProgramCacheKey = () => "grass-bend-v1";
+
+      // Forzar recompilación si cambia el "shape" del programa (wind afecta al código)
+      const key = `grass-bend-${wind.toFixed(3)}`;
+      m.customProgramCacheKey = () => key;
     };
 
     return m;
-  }, [wind]);
+  }, [color, wind]);
 
-  // Buffers por instancia
-  const { aScale, aPhase, matrices } = useMemo(() => {
+  /* =========
+     Buffers y matrices por instancia (determinísticos)
+     ========= */
+  const { aScale, aPhase, instanceColors, matrices } = useMemo(() => {
     const dummy = new THREE.Object3D();
     const aScale = new Float32Array(count);
     const aPhase = new Float32Array(count);
     const matrices: THREE.Matrix4[] = new Array(count);
 
-    const rng = (function (seed0: number) {
-      let s = seed0 % 2147483647;
-      if (s <= 0) s += 2147483646;
-      return () => (s = (s * 16807) % 2147483647) / 2147483647;
-    })(seed);
+    // Color por instancia (lineal) con jitter sutil
+    const instanceColors = new Float32Array(count * 3);
+    const base = new THREE.Color(
+      color as string | number | THREE.Color
+    ).convertSRGBToLinear();
+
+    const rng = mulberry32(seed);
+    const span = areaSize ?? terrainSize; // lado del cuadrado de distribución
 
     for (let i = 0; i < count; i++) {
-      const x = (rng() - 0.5) * areaSize;
-      const z = (rng() - 0.5) * areaSize;
-      const y = sampleHillHeight(x, z, areaSize, 0.6);
+      const x = (rng() - 0.5) * span;
+      const z = (rng() - 0.5) * span;
+      const y = sampleHillHeight(x, z, terrainSize, terrainAmplitude);
 
       aScale[i] = bladeHeight * (1.0 + (rng() - 0.5) * heightJitter * 2.0);
       const rotY = rng() * Math.PI * 2;
@@ -146,42 +191,99 @@ export default function GrassField({
       matrices[i] = dummy.matrix.clone();
 
       aPhase[i] = rng();
+
+      // Jitter cromático leve para profundidad visual (±6%)
+      const jitter = 1 + (rng() - 0.5) * 0.12;
+      const c = base.clone().multiplyScalar(jitter);
+      c.r = Math.max(0, Math.min(1, c.r));
+      c.g = Math.max(0, Math.min(1, c.g));
+      c.b = Math.max(0, Math.min(1, c.b));
+      const idx = i * 3;
+      instanceColors[idx + 0] = c.r;
+      instanceColors[idx + 1] = c.g;
+      instanceColors[idx + 2] = c.b;
     }
 
-    return { aScale, aPhase, matrices };
-  }, [count, areaSize, bladeHeight, heightJitter, seed]);
+    return { aScale, aPhase, instanceColors, matrices };
+  }, [
+    count,
+    terrainSize,
+    terrainAmplitude,
+    areaSize,
+    bladeHeight,
+    heightJitter,
+    seed,
+    color,
+  ]);
 
-  // Asignar matrices y atributos al InstancedMesh
-  const setAttributes = (mesh: THREE.InstancedMesh | null) => {
+  // Helper para aplicar atributos a un instanced mesh ya montado
+  const applyInstancedAttributes = (mesh: THREE.InstancedMesh | null) => {
     if (!mesh) return;
     for (let i = 0; i < count; i++) mesh.setMatrixAt(i, matrices[i]);
     mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
 
-    // geometry es BufferGeometry, pero aceptará atributos instanciados
-    const g = mesh.geometry as unknown as THREE.InstancedBufferGeometry;
+    const g = mesh.geometry as THREE.InstancedBufferGeometry;
+
     g.setAttribute("aScale", new THREE.InstancedBufferAttribute(aScale, 1));
     g.setAttribute("aPhase", new THREE.InstancedBufferAttribute(aPhase, 1));
+    g.setAttribute(
+      "instanceColor",
+      new THREE.InstancedBufferAttribute(instanceColors, 3)
+    );
+
+    (g.getAttribute("aScale") as THREE.BufferAttribute).setUsage(
+      THREE.StaticDrawUsage
+    );
+    (g.getAttribute("aPhase") as THREE.BufferAttribute).setUsage(
+      THREE.StaticDrawUsage
+    );
+    (g.getAttribute("instanceColor") as THREE.BufferAttribute).setUsage(
+      THREE.StaticDrawUsage
+    );
   };
 
-  // Animación del viento (uTime)
+  // Reaplicar atributos si cambian dependencias
+  useEffect(() => {
+    if (meshRef.current) applyInstancedAttributes(meshRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aScale, aPhase, instanceColors, matrices, count]);
+
+  /* =========
+     Animación del viento (uTime) + update de uWind en caliente
+     ========= */
   useFrame(({ clock }) => {
     const sh = shaderRef.current;
-    if (sh?.uniforms?.uTime) {
-      (sh.uniforms.uTime as THREE.IUniform<number>).value =
-        clock.getElapsedTime();
+    if (!sh?.uniforms) return;
+    (sh.uniforms.uTime as THREE.IUniform<number> | undefined)!.value =
+      clock.getElapsedTime();
+    const uW = sh.uniforms.uWind as THREE.IUniform<number> | undefined;
+    if (uW && typeof uW.value === "number" && uW.value !== wind) {
+      uW.value = wind;
     }
   });
+
+  // Limpieza de recursos
+  useEffect(() => {
+    return () => {
+      bladeGeom.dispose();
+      material.dispose();
+    };
+  }, [bladeGeom, material]);
 
   return (
     <instancedMesh
       ref={(m) => {
-        meshRef.current = m as THREE.InstancedMesh;
-        setAttributes(m as THREE.InstancedMesh);
+        meshRef.current = m as THREE.InstancedMesh | null;
+        applyInstancedAttributes(m as THREE.InstancedMesh | null);
       }}
+      // Nota: si cambiás dramáticamente "count", forzá remount con una "key"
+      key={`grass-${count}-${terrainSize}-${areaSize ?? terrainSize}-${seed}`}
       args={[bladeGeom, material, count]}
       castShadow={false}
       receiveShadow
       frustumCulled={false}
+      renderOrder={1}
     />
   );
 }

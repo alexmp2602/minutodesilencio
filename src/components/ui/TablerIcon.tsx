@@ -1,15 +1,14 @@
-// app/components/ui/TablerIcon.tsx
 "use client";
 
-import type { ComponentType } from "react";
 import type { IconProps } from "@tabler/icons-react";
 import {
-  IconRosette,        // "rosa"
-  IconFlower,         // "margarita" genérica
-  IconPlant2,         // "tulipán"
+  IconRosette, // "rosa"
+  IconFlower, // "margarita" genérica (fallback)
+  IconPlant2, // "tulipán"
   IconChevronLeft,
   IconChevronRight,
-  IconTargetArrow,    // "ir a mi flor"
+  IconChevronDown, // ⬅️ nuevo
+  IconTargetArrow, // "ir a mi flor"
   IconVolume,
   IconVolumeOff,
 } from "@tabler/icons-react";
@@ -20,16 +19,19 @@ export type IconName =
   | "daisy"
   | "chev-left"
   | "chev-right"
+  | "chev-down" // ⬅️ nuevo
   | "goto"
   | "volume"
   | "volume-off";
 
-const ICONS: Record<IconName, ComponentType<IconProps>> = {
+// Nota: NO usamos forwardRef — evitamos el problema de tipos de ref entre versiones.
+const ICONS: Record<IconName, React.ComponentType<IconProps>> = {
   rose: IconRosette,
   tulip: IconPlant2,
   daisy: IconFlower,
   "chev-left": IconChevronLeft,
   "chev-right": IconChevronRight,
+  "chev-down": IconChevronDown, // ⬅️ nuevo
   goto: IconTargetArrow,
   volume: IconVolume,
   "volume-off": IconVolumeOff,
@@ -49,13 +51,20 @@ export default function TablerIcon({
   title,
   ...rest
 }: Props) {
-  const Cmp = ICONS[name];
+  const Cmp = ICONS[name] || IconFlower;
+
+  if (!ICONS[name] && process.env.NODE_ENV !== "production") {
+    console.warn(`[TablerIcon] icon name "${name}" not found. Using fallback.`);
+  }
+
+  const labelled = !!title || (rest && typeof rest["aria-label"] === "string");
+
   return (
     <Cmp
       size={size}
       stroke={stroke}
-      role={title ? "img" : "presentation"}
-      aria-hidden={title ? undefined : true}
+      role={labelled ? "img" : "presentation"}
+      aria-hidden={labelled ? undefined : true}
       title={title}
       {...rest}
     />

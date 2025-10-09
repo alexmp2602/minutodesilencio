@@ -1,26 +1,15 @@
-/* ================================
+/* ===============================
    FUENTES
-   ================================ */
+   =============================== */
 
-/* Google Fonts para UI secundaria y CTA (si usás next/font, podés quitar este @import) */
-@import url("https://fonts.googleapis.com/css2?family=Lekton:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap");
+/* Si usás next/font, podés remover este import */
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Lekton:wght@400;700&family=Open+Sans:wght@400;600;700&display=swap");
 
-/* Catchy Mager autohospedada (archivos en /public/fonts) */
-@font-face {
-  font-family: "CatchyMager";
-  src: url("/fonts/CatchyMager.woff2") format("woff2"),
-    url("/fonts/Catchy Mager.otf") format("opentype"),
-    url("/fonts/Catchy Mager.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-/* Helpers tipográficos – si usás next/font, estas variables ya estarán definidas;
-   si no, caen a locales/Google */
-.font-display {
-  font-family: var(--font-catchy, "CatchyMager"), var(--font-ui, "Open Sans"),
-    system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+/* Helpers tipográficos */
+.font-serif {
+  font-family: var(--font-serif, "Cormorant Garamond"),
+    var(--font-ui, "Open Sans"), system-ui, -apple-system, Segoe UI, Roboto,
+    Arial, sans-serif;
 }
 .font-cta {
   font-family: var(--font-lekton, "Lekton"), var(--font-ui, "Open Sans"),
@@ -32,74 +21,36 @@
     Roboto, Arial, sans-serif;
 }
 
-/* Neon outline utilidades */
-:root {
-  --neon-color: #7ed1ff;
-  --neon-stroke: #c7ebff;
-  --neon-contrast: #0a1530;
-}
-.neon-outline {
-  font-family: var(--font-catchy, "CatchyMager"), var(--font-ui, "Open Sans"),
-    system-ui, sans-serif;
-  color: var(--neon-contrast);
-  -webkit-text-stroke: 2px var(--neon-stroke);
-  text-shadow: 0 0 6px color-mix(in oklab, var(--neon-color), transparent 35%),
-    0 0 14px color-mix(in oklab, var(--neon-color), transparent 25%),
-    0 0 28px color-mix(in oklab, var(--neon-color), transparent 10%);
-}
-.neon-strong {
-  -webkit-text-stroke: 2.5px var(--neon-stroke);
-  text-shadow: 0 0 8px var(--neon-color), 0 0 16px var(--neon-color),
-    0 0 34px color-mix(in oklab, var(--neon-color), white 20%);
-}
-.neon-soft {
-  -webkit-text-stroke: 1.5px color-mix(in oklab, var(--neon-stroke), white 15%);
-  text-shadow: 0 0 5px color-mix(in oklab, var(--neon-color), transparent 55%),
-    0 0 12px color-mix(in oklab, var(--neon-color), transparent 45%);
-}
-.display-1 {
-  font-size: clamp(36px, 7vw, 72px);
-  line-height: 1.02;
-}
-.display-2 {
-  font-size: clamp(28px, 5.2vw, 56px);
-  line-height: 1.05;
-}
-
-/* ================================
+/* ===============================
    THEME / TOKENS
-   ================================ */
+   =============================== */
 :root {
   color-scheme: dark;
   --bg: #0b0d10;
-  --bg-elev: #12161b;
   --text: #e8eef3;
   --muted: #a8b3bd;
   --primary: #6cc5ff;
   --border: #1f2730;
   --radius: 14px;
-  --fade-ms: 600ms;
-  --easing: cubic-bezier(0.22, 0.61, 0.36, 1);
   --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --blue-french: #2300ff;
+
+  /* Safe areas */
   --sa-t: env(safe-area-inset-top, 0px);
   --sa-r: env(safe-area-inset-right, 0px);
   --sa-b: env(safe-area-inset-bottom, 0px);
   --sa-l: env(safe-area-inset-left, 0px);
 
-  /* Cielo / portal */
-  --sky-top: #0a3e84;
-  --sky-mid: #4aa3ff;
-  --sky-bottom: #bfe1ff;
-  --cloud: #ffffff;
-  --halo-core: #ffffff;
-  --halo-warm: #fff4c9;
-  --halo-blue: #a7d2ff;
-  --blue-french: #2a57c7;
+  /* Overlay claro del jardín (como la versión anterior) */
+  --overlay-bg: rgba(255, 255, 255, 0.86);
+  --overlay-bg-strong: rgba(255, 255, 255, 0.94);
+  --overlay-stroke: rgba(0, 0, 0, 0.08);
+  --overlay-text: #2300ff; /* azul pedido por Flor */
 }
 
-/* ================================
+/* ===============================
    RESET / BASE
-   ================================ */
+   =============================== */
 *,
 *::before,
 *::after {
@@ -113,25 +64,18 @@ html,
 body {
   height: 100%;
   width: 100%;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui, "Open Sans"), system-ui, -apple-system, Segoe UI,
-    Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+    Roboto, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
 }
 main {
-  width: 100%;
-  min-height: 100dvh;
-  min-height: 100svh; /* iOS fallback para evitar saltos */
+  min-height: 100svh;
   display: flex;
   flex-direction: column;
-}
-a {
-  color: inherit;
-  text-decoration: none;
 }
 img,
 video,
@@ -148,583 +92,219 @@ textarea {
   font: inherit;
   color: inherit;
 }
-::selection {
-  background: color-mix(in hsl, var(--primary), transparent 70%);
-  color: #0b0d10;
-}
 
-/* ================================
-   LAYOUT
-   ================================ */
-.screen {
-  min-height: 100dvh;
-  min-height: 100svh;
+/* ===============================
+   PARALLAX / CANVAS
+   =============================== */
+.parallax-root {
+  position: relative;
+}
+.sticky-canvas {
+  position: sticky;
+  top: 0;
+  height: 100svh;
   width: 100%;
-  display: grid;
-  align-items: start;
-  padding: 24px;
   overflow: hidden;
+  z-index: 0;
 }
-@supports (overflow: clip) {
-  .screen {
-    overflow: clip;
-  }
-}
-.bg-radial {
-  background: radial-gradient(
-      1200px 600px at 50% 28%,
-      #111a22 0%,
-      #0b0d10 55%,
-      #0b0d10 100%
-    ),
-    var(--bg);
-}
-
-.h1 {
-  font-size: clamp(28px, 4vw, 42px);
-  font-weight: 800;
-  letter-spacing: 0.2px;
-}
-.muted {
-  color: var(--muted);
-  line-height: 1.7;
-  max-width: 720px;
-}
-.text-balance {
-  text-wrap: balance;
-  overflow-wrap: anywhere;
-  hyphens: auto;
-}
-.mt-8 {
-  margin-top: 8px;
-}
-.mt-16 {
-  margin-top: 16px;
-}
-.mt-24 {
-  margin-top: 24px;
-}
-
-/* ================================
-   BOTONES
-   ================================ */
-.btn {
-  appearance: none;
-  border: none;
-  background: var(--primary);
-  color: #0b0d10;
-  font-weight: 700;
-  padding: 12px 20px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: filter 0.12s ease-in-out, transform 0.06s ease-in-out;
-}
-.btn:hover {
-  filter: brightness(1.05);
-}
-.btn:active {
-  transform: translateY(1px);
-}
-.btn:focus-visible {
-  outline: 2px solid color-mix(in hsl, var(--primary), white 20%);
-  outline-offset: 2px;
-}
-.btn-sm {
-  padding: 8px 14px;
-  border-radius: 12px;
-  font-size: 14px;
-}
-
-/* CTA etéreo (usa Lekton) - Botón CONTINUAR: óvalo blanco, no tan pill */
-.btn-portal {
-  /* knobs */
-  --btn-r: 22px; /* radio del óvalo (↓ menos pill, ↑ más pill) */
-  --btn-bg: rgba(255, 255, 255, 0.92);
-  --btn-text: #232cff; /* azul del texto */
-  --btn-shadow: 0 14px 30px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.12);
-
-  appearance: none;
-  border: none;
-  background: var(--btn-bg);
-  color: var(--btn-text);
-
-  border-radius: var(--btn-r);
-  padding: 10px 30px;
-  font-family: var(--font-cta, "Lekton", "Open Sans", system-ui, sans-serif);
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  line-height: 1;
-
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    /* brillo sutil interior */ var(--btn-shadow);
-  backdrop-filter: blur(4px) saturate(1.02);
-  -webkit-backdrop-filter: blur(4px) saturate(1.02);
-
-  transition: transform 0.15s var(--easing), box-shadow 0.15s var(--easing),
-    background 0.2s ease;
-}
-.btn-portal:hover {
-  transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 16px 34px rgba(0, 0, 0, 0.22), 0 3px 8px rgba(0, 0, 0, 0.14);
-}
-.btn-portal:active {
-  transform: translateY(0);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 10px 22px rgba(0, 0, 0, 0.2), 0 2px 6px rgba(0, 0, 0, 0.14);
-}
-.btn-portal:focus-visible {
-  outline: 0;
-  box-shadow: 0 0 0 3px rgba(120, 160, 255, 0.55),
-    0 0 0 6px rgba(255, 255, 255, 0.65);
-}
-/* algo más compacto en mobile */
-@media (max-width: 560px) {
-  .btn-portal {
-    padding: 12px 22px;
-    border-radius: 24px;
-  }
-}
-
-/* ================================
-   INTRO (PORTAL)
-   ================================ */
-.screen-portal {
+.scroll-sections {
   position: relative;
-  background: linear-gradient(
-    to bottom,
-    var(--sky-top),
-    var(--sky-mid) 45%,
-    var(--sky-bottom) 100%
-  );
-  overflow: hidden;
+  z-index: 1;
 }
 
-/* Nubes con parallax */
-.clouds {
-  position: absolute;
-  inset: -10% -10% 0 -10%;
-  background: radial-gradient(
-      120px 50px at 20% 30%,
-      color-mix(in oklab, var(--cloud), transparent 35%),
-      transparent 60%
-    ),
-    radial-gradient(
-      160px 60px at 70% 40%,
-      color-mix(in oklab, var(--cloud), transparent 35%),
-      transparent 60%
-    ),
-    radial-gradient(
-      140px 50px at 40% 70%,
-      color-mix(in oklab, var(--cloud), transparent 35%),
-      transparent 60%
-    );
-  filter: blur(6px) saturate(0.9);
-  animation: float-clouds 28s linear infinite;
-  opacity: 0.75;
-}
-@keyframes float-clouds {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-12%);
-  }
-}
+/* ===============================
+   OVERLAY JARDÍN (CLARO AZUL)
+   =============================== */
 
-/* Halo */
-.halo {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-.halo::before,
-.halo::after {
-  content: "";
-  position: absolute;
-  width: min(70vmin, 560px);
-  height: min(70vmin, 560px);
-  border-radius: 50%;
-  filter: blur(12px);
-}
-.halo::before {
-  background: radial-gradient(
-    circle at 50% 50%,
-    var(--halo-core) 0%,
-    var(--halo-warm) 55%,
-    transparent 60%
-  );
-  opacity: 0.9;
-}
-.halo::after {
-  background: radial-gradient(
-    circle at 50% 50%,
-    color-mix(in oklab, var(--halo-blue), transparent 40%) 0%,
-    transparent 70%
-  );
-  transform: scale(1.25);
-  animation: halo-pulse 4.8s var(--easing) infinite;
-  opacity: 0.85;
-}
-@keyframes halo-pulse {
-  0%,
-  100% {
-    transform: scale(1.22);
-    opacity: 0.85;
-  }
-  50% {
-    transform: scale(1.32);
-    opacity: 1;
-  }
-}
-
-/* Fallbacks de color-mix/oklab para navegadores viejos */
-@supports not (color: color-mix(in oklab, white, black)) {
-  .halo::after {
-    opacity: 0.7;
-  }
-}
-
-/* Textos portal */
-.portal-text {
-  position: relative;
-  z-index: 2;
-  text-align: center;
-  place-self: center;
-  color: var(--blue-french);
-  text-shadow: 0 0 8px color-mix(in oklab, var(--blue-french), white 20%),
-    0 0 18px color-mix(in oklab, var(--blue-french), transparent 50%);
-}
-.portal-title {
-  font-size: clamp(22px, 3.8vw, 36px);
-  font-weight: 600;
-  font-style: italic;
-}
-.portal-sub {
-  font-size: clamp(16px, 2.6vw, 20px);
-  margin-top: 10px;
-  font-style: italic;
-}
-
-/* ================================
-   CONTENEDORES INTRO/RITUAL
-   ================================ */
-.intro-card {
-  place-self: center;
-  text-align: center;
-  max-width: 760px;
-  padding: 32px 24px;
-}
-
-.ritual-wrap {
-  place-self: center;
-  display: grid;
-  justify-items: center;
-  text-align: center;
-  width: min(560px, 92vw);
-}
-.circle-wrap {
-  position: relative;
-  width: 260px;
-  height: 260px;
-  margin-bottom: 18px;
-}
-.circle-time {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 48px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Crossfade */
-.crossfade {
-  position: relative;
-  width: min(520px, 90vw);
-  min-height: 120px;
-  margin-top: 10px;
-}
-.crossfade-item {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  transform: translateY(6px);
-  animation: crossfade-in var(--fade-ms) var(--easing) forwards;
-  will-change: opacity, transform;
-}
-.crossfade-item.title {
-  font-size: clamp(18px, 3vw, 24px);
-  font-weight: 700;
-}
-.crossfade-item.text {
-  color: var(--muted);
-  margin-top: 36px;
-  line-height: 1.7;
-}
-
-.fade-in-600 {
-  animation: fade-in var(--fade-ms) var(--easing) both;
-}
-@keyframes fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes crossfade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .fade-in-600,
-  .crossfade-item,
-  .clouds,
-  .halo::after,
-  .btn-portal {
-    animation-duration: 1ms !important;
-    transition-duration: 1ms !important;
-    transform: none !important;
-  }
-}
-
-/* Skip / Mute */
-.skip-btn,
-.mute-btn {
-  position: absolute;
-  right: calc(16px + var(--sa-r));
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-  transition: color 0.2s ease, transform 0.06s ease;
-  z-index: 20;
-  display: inline-grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  line-height: 1;
-}
-.skip-btn {
-  bottom: calc(90px + var(--sa-b));
-  font-size: 22px;
-}
-.mute-btn {
-  bottom: calc(110px + var(--sa-b));
-  font-size: 22px;
-}
-.skip-btn:hover,
-.mute-btn:hover {
-  color: rgba(255, 255, 255, 0.95);
-}
-.skip-btn:active,
-.mute-btn:active {
-  transform: translateY(1px);
-}
-@media (pointer: coarse) {
-  .skip-btn,
-  .mute-btn {
-    width: 52px;
-    height: 52px;
-    font-size: 24px;
-  }
-}
-
-/* ================================
-   CANVAS INMERSIVO
-   ================================ */
-.screen-immersive {
+/* Contenedor base del overlay (siempre por delante del canvas) */
+.ms-garden-overlay {
   position: fixed;
   inset: 0;
-  padding: 0;
-  overflow: hidden;
-}
-canvas {
-  border-radius: var(--radius);
-}
-.screen-immersive > canvas {
-  display: block;
-  width: 100% !important;
-  height: 100% !important;
-  border-radius: 0;
-}
-.canvas-grab {
-  cursor: grab;
-}
-.canvas-grabbing {
-  cursor: grabbing;
+  z-index: 100; /* IMPORTANTE: delante del canvas y de otros overlays */
+  pointer-events: none;
 }
 
-/* ================================
-   OVERLAY JARDÍN
-   ================================ */
-.garden-overlay {
-  position: absolute;
+/* Saludo (líneas “Cada flor…”) centrado y sutil.
+   Si molestara, podés ocultarlo con display:none; */
+.ms-garden-overlay .greet {
+  position: fixed;
   inset: 0;
-  pointer-events: none;
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  padding: calc(12px + var(--sa-t)) calc(12px + var(--sa-r))
-    calc(12px + var(--sa-b)) calc(12px + var(--sa-l));
-  align-content: stretch;
-  justify-items: start;
-  z-index: 12;
+  place-items: center;
+  text-align: center;
+  color: var(--overlay-text);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
 }
-.garden-overlay .panel {
+.ms-garden-overlay .greet .line1,
+.ms-garden-overlay .greet .line2,
+.ms-garden-overlay .greet .line3,
+.ms-garden-overlay .greet .line4 {
+  font-style: italic;
+  font-size: clamp(16px, 2.1vw, 22px);
+  line-height: 1.2;
+  opacity: 0.98;
+}
+.ms-garden-overlay .greet .line1 {
+  transform: translateY(-28vh);
+}
+.ms-garden-overlay .greet .line2 {
+  transform: translateY(-24vh);
+}
+.ms-garden-overlay .greet .line3 {
+  transform: translateY(-20vh);
+}
+.ms-garden-overlay .greet .line4 {
+  transform: translateY(-12vh);
+}
+
+/* Chip: “Últimas flores” — arriba-izquierda, pill */
+.ms-garden-overlay .counter-chip {
+  position: fixed;
+  left: calc(12px + var(--sa-l));
+  top: calc(12px + var(--sa-t));
+  padding: 6px 12px;
+  border-radius: 999px; /* pill real */
+  background: rgba(0, 0, 0, 0.75); /* como en la versión anterior */
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1;
   pointer-events: auto;
-  align-self: start;
-  width: clamp(260px, 26vw, 320px);
-  background: color-mix(
-    in oklab,
-    var(--bg) 84%,
-    white 16%
-  ); /* +opacidad legible */
-  border: 1px solid color-mix(in oklab, var(--border) 80%, white 20%);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  backdrop-filter: blur(8px) saturate(1.05);
-  -webkit-backdrop-filter: blur(8px) saturate(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Panel de plantar — anclado ABAJO y centrado */
+.ms-garden-overlay .plant-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(16px, calc(16px + var(--sa-b)));
+  width: min(880px, calc(100vw - 24px - var(--sa-l) - var(--sa-r)));
+  pointer-events: auto;
+
+  background: var(--overlay-bg);
+  color: var(--overlay-text);
+  border: 1px solid var(--overlay-stroke);
+  border-radius: 20px;
+  padding: 16px;
+  backdrop-filter: blur(10px) saturate(1.05);
+  -webkit-backdrop-filter: blur(10px) saturate(1.05);
   box-shadow: var(--shadow-lg);
 }
-.garden-overlay .panel-title {
-  font-weight: 700;
-  margin-bottom: 6px;
+
+/* Header del panel */
+.ms-garden-overlay .plant-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  margin-bottom: 12px;
 }
-.garden-overlay .row {
-  display: flex;
+.ms-garden-overlay .panel-title {
+  font-weight: 800;
+}
+
+/* Acciones (ir a mi flor / mute) */
+.ms-garden-overlay .header-actions {
+  display: grid;
+  grid-auto-flow: column;
   gap: 8px;
   align-items: center;
 }
-.garden-overlay .input {
-  flex: 1;
-  background: #0f1419;
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 10px 12px;
-  border-radius: var(--radius);
+.ms-garden-overlay .icon-btn {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--overlay-stroke);
+  color: var(--overlay-text);
+  transition: transform 0.08s ease, background 0.15s ease,
+    filter 0.12s ease-in-out;
+}
+.ms-garden-overlay .icon-btn:active {
+  transform: scale(0.96);
+}
+
+/* Fila con input + picker + CTA */
+.ms-garden-overlay .plant-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+}
+.ms-garden-overlay .input {
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.95);
+  color: #0b0d10;
+  border: 1px solid var(--overlay-stroke);
+  padding: 12px 14px;
+  border-radius: 12px;
   outline: none;
   min-height: 44px;
   font-size: 16px;
 }
-.garden-overlay .input-sm {
-  min-height: 38px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  font-size: 14px;
-}
-.garden-overlay .input:focus {
-  border-color: color-mix(in hsl, var(--primary), white 20%);
-  box-shadow: 0 0 0 2px color-mix(in hsl, var(--primary), transparent 80%);
-}
-.garden-overlay .hint {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--muted);
+.ms-garden-overlay .input::placeholder {
+  opacity: 0.7;
 }
 
-.garden-overlay .list {
-  margin-top: 6px;
+/* Picker (flechas + icono) */
+.ms-garden-overlay .picker {
   display: grid;
-  gap: 6px;
-  max-height: 240px;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-.garden-overlay .item {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 6px;
+  grid-auto-flow: column;
   align-items: center;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.garden-overlay .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-}
-.garden-overlay .dot.alive {
-  background: #3aa65a;
-}
-.garden-overlay .dot.wilted {
-  background: #7a7a7a;
-}
-.garden-overlay .msg {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.garden-overlay .ts {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.panel-latest {
-  grid-row: 1;
-}
-.panel-plant {
-  grid-row: 3;
-  align-self: end;
-  margin-top: auto;
-}
-.garden-overlay .btn.btn-sm {
-  padding: 8px 14px;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--overlay-stroke);
+  padding: 6px;
   border-radius: 12px;
-  font-weight: 700;
+}
+.ms-garden-overlay .picker-btn,
+.ms-garden-overlay .picker-current {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--overlay-bg-strong);
+  border: 1px solid var(--overlay-stroke);
+  color: var(--overlay-text);
 }
 
-/* Scrollbars sutiles */
-.garden-overlay .list::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
+/* CTA “Plantar” (azul, invertido para contraste) */
+.ms-garden-overlay .btn-cta {
+  background: var(--overlay-text);
+  color: var(--overlay-bg-strong);
+  border: none;
+  font-weight: 800;
+  font-family: var(--font-lekton, "Lekton"), var(--font-ui, "Open Sans"),
+    system-ui, sans-serif;
+  padding: 12px 20px;
+  border-radius: 12px;
+  cursor: pointer;
 }
-.garden-overlay .list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-}
-.garden-overlay .list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-@media (max-width: 920px) {
-  .garden-overlay {
-    grid-template-rows: auto auto 1fr;
-    gap: 10px;
-  }
-  .garden-overlay .panel {
-    width: min(100%, 560px);
-  }
-  .panel-plant {
-    grid-row: 2;
-    align-self: start;
-    margin-top: 0;
-  }
+.ms-garden-overlay .btn-cta:active {
+  transform: translateY(1px);
 }
 
-/* Helpers */
-.hint {
-  color: var(--muted);
-  font-size: 14px;
+/* Mobile tweaks */
+@media (max-width: 560px) {
+  .ms-garden-overlay .plant-row {
+    gap: 8px;
+  }
+  .ms-garden-overlay .picker-btn,
+  .ms-garden-overlay .picker-current {
+    width: 34px;
+    height: 34px;
+  }
+  .ms-garden-overlay .input::placeholder {
+    font-size: 12px;
+  }
 }
-.visually-hidden,
+
+/* A11y helpers */
 .sr-only {
   position: absolute !important;
   width: 1px;
@@ -735,74 +315,4 @@ canvas {
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
-}
-
-/* Fallbacks si color-mix no existe */
-@supports not (color: color-mix(in hsl, white, black)) {
-  .btn:focus-visible {
-    outline-color: #8fd7ff;
-  }
-  .garden-overlay .panel {
-    background: rgba(11, 13, 16, 0.92);
-  }
-}
-
-/* ================================
-   SELECTOR FLORES (centro-inferior)
-   ================================ */
-.picker-card {
-  background: rgba(14, 16, 18, 0.8) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45) !important;
-  border-radius: 20px !important;
-}
-.picker-arrow {
-  background: rgba(0, 0, 0, 0.32) !important;
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
-  color: rgba(255, 255, 255, 0.95) !important;
-  width: 46px !important;
-  height: 46px !important;
-  border-radius: 14px !important;
-  transition: filter 0.12s ease-in-out, transform 0.06s ease-in-out !important;
-}
-.picker-arrow:hover {
-  filter: brightness(1.08) !important;
-}
-.picker-arrow:active {
-  transform: translateY(1px) !important;
-}
-.picker-arrow:disabled {
-  opacity: 0.6 !important;
-  cursor: default !important;
-}
-.picker-cta {
-  background: #f1b6e6 !important;
-  color: #1c1322 !important;
-  font-weight: 800 !important;
-  border: none !important;
-  font-family: var(--font-lekton, "Lekton"), var(--font-ui, "Open Sans"),
-    system-ui, sans-serif !important;
-}
-
-/* Contenedor para poner botones arriba-derecha en cualquier pantalla */
-.top-actions {
-  position: absolute;
-  top: calc(12px + var(--sa-t));
-  right: calc(12px + var(--sa-r));
-  display: flex;
-  gap: 8px;
-  z-index: 30;
-  pointer-events: auto;
-}
-/* Cuando están dentro de .top-actions, que NO sean absolutos */
-.top-actions .mute-btn,
-.top-actions .skip-btn {
-  position: static !important;
-  bottom: auto !important;
-  right: auto !important;
-}
-/* Realce al pasar */
-.top-actions .skip-btn:hover,
-.top-actions .mute-btn:hover {
-  color: rgba(255, 255, 255, 0.95);
 }
