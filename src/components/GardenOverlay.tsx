@@ -13,23 +13,69 @@ import { useMuteStore } from "@/state/muteStore";
 type FlowersResponse = { flowers: Flower[] };
 const VARIANTS = ["rose", "tulip", "daisy"] as const;
 type Variant = (typeof VARIANTS)[number];
+
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
+
+/* ---------- UUID seguro (polyfill) ---------- */
+function safeUUID(): string {
+  // 1) Nativo
+  try {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return crypto.randomUUID();
+    }
+  } catch {}
+  // 2) RFC4122 v4 con getRandomValues
+  try {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.getRandomValues === "function"
+    ) {
+      const b = new Uint8Array(16);
+      crypto.getRandomValues(b);
+      b[6] = (b[6] & 0x0f) | 0x40; // version 4
+      b[8] = (b[8] & 0x3f) | 0x80; // variant
+      const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+      return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(
+        16,
+        20
+      )}-${h.slice(20)}`;
+    }
+  } catch {}
+  // 3) Fallback con Math.random (suficiente para id local)
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 /* ---------- identidad local mínima ---------- */
 function getUserId(): string {
   if (typeof window === "undefined") return "anon";
   const KEY = "ms:userId";
-  let id = localStorage.getItem(KEY);
+  let id: string | null = null;
+  try {
+    id = localStorage.getItem(KEY);
+  } catch {}
   if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(KEY, id);
+    id = safeUUID();
+    try {
+      localStorage.setItem(KEY, id);
+    } catch {}
   }
   return id;
 }
 function getUserName(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("ms:userName");
+  try {
+    return localStorage.getItem("ms:userName");
+  } catch {
+    return null;
+  }
 }
 
 /* ---------- helpers cámara ↔ suelo ---------- */
@@ -252,6 +298,7 @@ export default function GardenOverlay() {
             isRecord(real) &&
             typeof (real as Flower).id === "string" &&
             "created_at" in (real as Flower);
+
           const withPos: Flower | null = ok
             ? ({ ...(real as Flower), x: px, y: py, z: pz } as Flower)
             : null;
@@ -261,6 +308,7 @@ export default function GardenOverlay() {
           const prev = current?.flowers ?? [];
           const next = [withPos, ...prev].filter(Boolean) as Flower[];
 
+          // SFX + señal de enfoque
           playSfx();
           window.dispatchEvent(
             new CustomEvent("flower-focus", {
@@ -306,6 +354,7 @@ export default function GardenOverlay() {
 
   const ui = (
     <div className="ms-garden-overlay" aria-live="polite">
+      {/* Chip contador */}
       <div
         className="counter-chip"
         role="status"
@@ -315,6 +364,7 @@ export default function GardenOverlay() {
         Últimas flores: <strong>{isLoading ? "…" : total}</strong>
       </div>
 
+      {/* Barra plantar */}
       <form className="plant-bar" onSubmit={onSubmit} aria-busy={pending}>
         <div className="plant-header">
           <div className="panel-title">Plantar una flor</div>
