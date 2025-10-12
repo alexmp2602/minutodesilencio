@@ -12,7 +12,6 @@ import {
   PerformanceMonitor,
   Html,
 } from "@react-three/drei";
-import { EffectComposer, Bloom } from "@react-three/postprocessing";
 
 import Ground from "@/components/Ground";
 import GrassField from "@/components/GrassField";
@@ -33,7 +32,7 @@ declare global {
   }
 }
 
-type Props = { introProgress?: number; minuteProgress?: number };
+type Props = { minuteProgress?: number };
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeInOut = (t: number) => {
@@ -73,7 +72,7 @@ function TimelineRig({
         }
         snappedRef.current = true;
       }
-      return; // dentro del jardín: OrbitControls manda
+      return;
     }
 
     const idle = 0.02 * Math.sin(performance.now() * 0.0012);
@@ -122,15 +121,15 @@ function PublishGlobals({
   return null;
 }
 
-export default function UnifiedParallaxWorld({
-  introProgress = 0,
-  minuteProgress = 0,
-}: Props) {
+export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
   const [dpr, setDpr] = useState<[number, number] | number>([1, 2]);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [grabbing, setGrabbing] = useState(false);
   const [forceEntered, setForceEntered] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
+
+  // ref al canvas para listeners no-pasivos
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -164,33 +163,71 @@ export default function UnifiedParallaxWorld({
       (document.body as HTMLElement);
     el.scrollTop += dy;
   };
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (!gardenEntered) {
-      e.preventDefault();
-      scrollByPage(e.deltaY);
-    }
-    // dentro del jardín: no hacemos nada → OrbitControls usa la rueda para zoom
-  };
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!gardenEntered) {
-      lastTouchY.current = e.touches[0]?.clientY ?? null;
-    }
-  };
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!gardenEntered) {
-      const y = e.touches[0]?.clientY ?? null;
-      if (y != null && lastTouchY.current != null) {
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (!gardenEntered) {
         e.preventDefault();
-        const dy = lastTouchY.current - y;
-        scrollByPage(dy);
+        scrollByPage(e.deltaY);
       }
-      lastTouchY.current = y;
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      if (!gardenEntered) {
+        lastTouchY.current = e.touches[0]?.clientY ?? null;
+      }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!gardenEntered) {
+        const y = e.touches[0]?.clientY ?? null;
+        if (y != null && lastTouchY.current != null) {
+          e.preventDefault();
+          const dy = lastTouchY.current - y;
+          scrollByPage(dy);
+        }
+        lastTouchY.current = y;
+      }
+    };
+    const onTouchEnd = () => {
+      lastTouchY.current = null;
+    };
+
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+    canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+    canvas.addEventListener("touchend", onTouchEnd, { passive: true });
+
+    return () => {
+      canvas.removeEventListener("wheel", onWheel as EventListener);
+      canvas.removeEventListener("touchstart", onTouchStart as EventListener);
+      canvas.removeEventListener("touchmove", onTouchMove as EventListener);
+      canvas.removeEventListener("touchend", onTouchEnd as EventListener);
+    };
+  }, [gardenEntered]);
+
+  // UX: bloquear scroll de página dentro del jardín y limpiar al salir
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const canvas = canvasRef.current;
+
+    if (gardenEntered) {
+      body.style.overflow = "hidden";
+      root.style.overscrollBehavior = "contain";
+      if (canvas) (canvas.style as CSSStyleDeclaration).touchAction = "none";
+    } else {
+      body.style.overflow = "";
+      root.style.overscrollBehavior = "";
+      if (canvas) (canvas.style as CSSStyleDeclaration).touchAction = "";
     }
-    // dentro del jardín: OrbitControls maneja drag y pinch (zoom)
-  };
-  const handleTouchEnd = () => {
-    lastTouchY.current = null;
-  };
+    return () => {
+      body.style.overflow = "";
+      root.style.overscrollBehavior = "";
+      if (canvas) (canvas.style as CSSStyleDeclaration).touchAction = "";
+    };
+  }, [gardenEntered]);
 
   return (
     <Canvas
@@ -204,6 +241,8 @@ export default function UnifiedParallaxWorld({
       dpr={dpr}
       style={{ width: "100%", height: "100%" }}
       onCreated={({ gl, scene }) => {
+        canvasRef.current = gl.domElement as HTMLCanvasElement;
+
         gl.setClearColor("#edd0a1", 1);
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.toneMapping = THREE.ACESFilmicToneMapping;
@@ -218,10 +257,6 @@ export default function UnifiedParallaxWorld({
       onPointerUp={() => setGrabbing(false)}
       onPointerCancel={() => setGrabbing(false)}
       onContextMenu={(e) => e.preventDefault()}
-      onWheel={handleWheel}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
     >
       <PerformanceMonitor
         onDecline={() => setDpr(1)}
@@ -302,29 +337,19 @@ export default function UnifiedParallaxWorld({
           </group>
         </Suspense>
 
-        <EffectComposer multisampling={0}>
-          <Bloom
-            mipmapBlur
-            intensity={reducedMotion ? 0.08 : 0.16}
-            luminanceThreshold={0.72}
-            luminanceSmoothing={0.08}
-            radius={0.55}
-          />
-        </EffectComposer>
-
-        {/* Dentro del jardín: la rueda hace zoom (dolly) */}
+        {/* Controles sólo dentro del jardín */}
         {gardenEntered && (
           <OrbitControls
             ref={controlsRef}
-            enableZoom={true} // ← ACTIVAMOS zoom con rueda/pinch
+            enableZoom
             zoomSpeed={reducedMotion ? 0.7 : 1.0}
             enablePan={false}
             enableDamping
             dampingFactor={reducedMotion ? 0.03 : 0.08}
             rotateSpeed={reducedMotion ? 0.45 : 0.68}
             maxPolarAngle={Math.PI / 2.02}
-            minDistance={2.5} // podés acercarte más al suelo
-            maxDistance={28} // y alejarte hacia el cielo
+            minDistance={2.5}
+            maxDistance={28}
           />
         )}
 

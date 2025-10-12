@@ -1,4 +1,3 @@
-// app/components/GrassField.tsx
 "use client";
 
 import * as THREE from "three";
@@ -65,7 +64,7 @@ export default function GrassField({
   count = 12000,
   terrainSize = 200,
   terrainAmplitude = 0.6,
-  areaSize, // ahora se respeta
+  areaSize,
   bladeHeight = 0.6,
   heightJitter = 0.35,
   wind = 0.8,
@@ -95,11 +94,11 @@ export default function GrassField({
   const material = useMemo(() => {
     const col = new THREE.Color(color as string | number | THREE.Color);
     const m = new THREE.MeshStandardMaterial({
-      color: col, // se linealiza con renderer sRGB
+      color: col, // sRGB → linear via renderer
       roughness: 0.95,
       metalness: 0.0,
       side: THREE.DoubleSide,
-      vertexColors: true, // <- habilitamos colores por instancia
+      vertexColors: false, // ❗ fuera: no usamos instanceColor con r180
       toneMapped: true,
     });
 
@@ -114,18 +113,18 @@ export default function GrassField({
         attribute float aScale;
         attribute float aPhase;
         varying float vY;
-        varying float vBend;
+        varying float vPhase;
         ` +
         shader.vertexShader.replace(
           "#include <begin_vertex>",
           `
           #include <begin_vertex>
           vY = position.y;
+          vPhase = aPhase;
 
           float sway = sin( (uTime*0.8) + aPhase*6.2831 + position.y*1.2 ) * 0.6;
           float gust = sin( (uTime*0.2) + aPhase*12.0 ) * 0.4;
           float bend = (sway + gust) * uWind;
-          vBend = bend;
 
           transformed.x += bend * pow(vY, 1.5);
           transformed.z += bend * 0.6 * pow(vY, 1.8);
@@ -136,22 +135,28 @@ export default function GrassField({
       shader.fragmentShader =
         `
         varying float vY;
-        varying float vBend;
+        varying float vPhase;
         ` +
         shader.fragmentShader.replace(
           "#include <color_fragment>",
           `
-          // leve gradiente vertical en las hojas
+          // gradiente vertical leve
           diffuseColor.rgb *= mix(vec3(0.95, 0.97, 0.95),
                                   vec3(1.05, 1.08, 1.04),
                                   clamp(vY, 0.0, 1.0));
+
+          // variación cromática por instancia (sin instanceColor)
+          // ±6% alrededor del color base, determinístico por vPhase
+          float jitter = 1.0 + (fract(sin(vPhase*43758.5453)*43758.5453) - 0.5) * 0.12;
+          diffuseColor.rgb *= jitter;
+
           #include <color_fragment>
         `
         );
 
       shaderRef.current = shader as GLSLShader;
 
-      // Forzar recompilación si cambia el "shape" del programa (wind afecta al código)
+      // Forzar recompilación si cambia la "forma" del programa
       const key = `grass-bend-${wind.toFixed(3)}`;
       m.customProgramCacheKey = () => key;
     };
@@ -162,17 +167,11 @@ export default function GrassField({
   /* =========
      Buffers y matrices por instancia (determinísticos)
      ========= */
-  const { aScale, aPhase, instanceColors, matrices } = useMemo(() => {
+  const { aScale, aPhase, matrices } = useMemo(() => {
     const dummy = new THREE.Object3D();
     const aScale = new Float32Array(count);
     const aPhase = new Float32Array(count);
     const matrices: THREE.Matrix4[] = new Array(count);
-
-    // Color por instancia (lineal) con jitter sutil
-    const instanceColors = new Float32Array(count * 3);
-    const base = new THREE.Color(
-      color as string | number | THREE.Color
-    ).convertSRGBToLinear();
 
     const rng = mulberry32(seed);
     const span = areaSize ?? terrainSize; // lado del cuadrado de distribución
@@ -191,20 +190,9 @@ export default function GrassField({
       matrices[i] = dummy.matrix.clone();
 
       aPhase[i] = rng();
-
-      // Jitter cromático leve para profundidad visual (±6%)
-      const jitter = 1 + (rng() - 0.5) * 0.12;
-      const c = base.clone().multiplyScalar(jitter);
-      c.r = Math.max(0, Math.min(1, c.r));
-      c.g = Math.max(0, Math.min(1, c.g));
-      c.b = Math.max(0, Math.min(1, c.b));
-      const idx = i * 3;
-      instanceColors[idx + 0] = c.r;
-      instanceColors[idx + 1] = c.g;
-      instanceColors[idx + 2] = c.b;
     }
 
-    return { aScale, aPhase, instanceColors, matrices };
+    return { aScale, aPhase, matrices };
   }, [
     count,
     terrainSize,
@@ -213,32 +201,25 @@ export default function GrassField({
     bladeHeight,
     heightJitter,
     seed,
-    color,
   ]);
 
   // Helper para aplicar atributos a un instanced mesh ya montado
   const applyInstancedAttributes = (mesh: THREE.InstancedMesh | null) => {
     if (!mesh) return;
+
+    // matrices
     for (let i = 0; i < count; i++) mesh.setMatrixAt(i, matrices[i]);
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
 
+    // atributos custom
     const g = mesh.geometry as THREE.InstancedBufferGeometry;
-
     g.setAttribute("aScale", new THREE.InstancedBufferAttribute(aScale, 1));
     g.setAttribute("aPhase", new THREE.InstancedBufferAttribute(aPhase, 1));
-    g.setAttribute(
-      "instanceColor",
-      new THREE.InstancedBufferAttribute(instanceColors, 3)
-    );
-
     (g.getAttribute("aScale") as THREE.BufferAttribute).setUsage(
       THREE.StaticDrawUsage
     );
     (g.getAttribute("aPhase") as THREE.BufferAttribute).setUsage(
-      THREE.StaticDrawUsage
-    );
-    (g.getAttribute("instanceColor") as THREE.BufferAttribute).setUsage(
       THREE.StaticDrawUsage
     );
   };
@@ -247,7 +228,7 @@ export default function GrassField({
   useEffect(() => {
     if (meshRef.current) applyInstancedAttributes(meshRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aScale, aPhase, instanceColors, matrices, count]);
+  }, [aScale, aPhase, matrices, count]);
 
   /* =========
      Animación del viento (uTime) + update de uWind en caliente
@@ -277,7 +258,6 @@ export default function GrassField({
         meshRef.current = m as THREE.InstancedMesh | null;
         applyInstancedAttributes(m as THREE.InstancedMesh | null);
       }}
-      // Nota: si cambiás dramáticamente "count", forzá remount con una "key"
       key={`grass-${count}-${terrainSize}-${areaSize ?? terrainSize}-${seed}`}
       args={[bladeGeom, material, count]}
       castShadow={false}
