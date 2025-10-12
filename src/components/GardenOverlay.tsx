@@ -1,8 +1,6 @@
-// src/components/GardenOverlay.tsx
 "use client";
 
 import * as React from "react";
-import * as THREE from "three";
 import { createPortal } from "react-dom";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
@@ -17,18 +15,15 @@ type Variant = (typeof VARIANTS)[number];
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
 
-/* ---------- UUID seguro (polyfill) ---------- */
+/* ---------- UUID seguro ---------- */
 function safeUUID(): string {
-  // 1) Nativo
   try {
     if (
       typeof crypto !== "undefined" &&
       typeof crypto.randomUUID === "function"
-    ) {
+    )
       return crypto.randomUUID();
-    }
   } catch {}
-  // 2) RFC4122 v4 con getRandomValues
   try {
     if (
       typeof crypto !== "undefined" &&
@@ -36,8 +31,8 @@ function safeUUID(): string {
     ) {
       const b = new Uint8Array(16);
       crypto.getRandomValues(b);
-      b[6] = (b[6] & 0x0f) | 0x40; // version 4
-      b[8] = (b[8] & 0x3f) | 0x80; // variant
+      b[6] = (b[6] & 0x0f) | 0x40;
+      b[8] = (b[8] & 0x3f) | 0x80;
       const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
       return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(
         16,
@@ -45,7 +40,6 @@ function safeUUID(): string {
       )}-${h.slice(20)}`;
     }
   } catch {}
-  // 3) Fallback con Math.random (suficiente para id local)
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;
@@ -53,7 +47,7 @@ function safeUUID(): string {
   });
 }
 
-/* ---------- identidad local mínima ---------- */
+/* ---------- identidad local ---------- */
 function getUserId(): string {
   if (typeof window === "undefined") return "anon";
   const KEY = "ms:userId";
@@ -76,30 +70,6 @@ function getUserName(): string | null {
   } catch {
     return null;
   }
-}
-
-/* ---------- helpers cámara ↔ suelo ---------- */
-const AREA = 200;
-const HALF = AREA / 2;
-function clampArea(x: number, z: number) {
-  return [
-    THREE.MathUtils.clamp(x, -HALF + 1, HALF - 1),
-    THREE.MathUtils.clamp(z, -HALF + 1, HALF - 1),
-  ] as const;
-}
-function tryGetLookAtOnGround(): readonly [number, number, number] | null {
-  if (typeof window === "undefined") return null;
-  const cam: THREE.Camera | undefined = (
-    window as Window & { __camera?: THREE.Camera }
-  ).__camera;
-  if (!cam) return null;
-  const ray = new THREE.Raycaster();
-  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  ray.setFromCamera(new THREE.Vector2(0, 0), cam);
-  const pt = new THREE.Vector3();
-  if (!ray.ray.intersectPlane(plane, pt)) return null;
-  const [x, z] = clampArea(pt.x, pt.z);
-  return [x, 0, z] as const;
 }
 
 /* Persistimos última flor (para “Ir a mi flor”) */
@@ -125,6 +95,23 @@ function readLastFlower(): LastFlower | null {
     }
   } catch {}
   return null;
+}
+
+/** Espera a que la escena elija una posición y complete el vuelo. */
+function askSceneForPlantPosition(): Promise<
+  readonly [number, number, number]
+> {
+  return new Promise((resolve) => {
+    const once = (e: Event) => {
+      const de = e as CustomEvent<{ position: [number, number, number] }>;
+      window.removeEventListener("ms:plant:done", once as EventListener);
+      resolve(de.detail.position);
+    };
+    window.addEventListener("ms:plant:done", once as EventListener, {
+      once: true,
+    });
+    window.dispatchEvent(new CustomEvent("ms:plant")); // dispara en la escena
+  });
 }
 
 export default function GardenOverlay() {
@@ -155,7 +142,7 @@ export default function GardenOverlay() {
   const muted = useMuteStore((s) => s.muted);
   const toggleMute = useMuteStore((s) => s.toggleMute);
 
-  // SFX plantar
+  // SFX plantar (si no existe el archivo, no rompe)
   const sfxRef = React.useRef<HTMLAudioElement | null>(null);
   React.useEffect(() => {
     const el = new Audio("/sfx/plant.mp3");
@@ -180,13 +167,6 @@ export default function GardenOverlay() {
     } catch {}
   }, [muted]);
 
-  // Posición fallback
-  const pickPosFallback = () => {
-    const r = 3 + Math.random() * 9;
-    const a = Math.random() * Math.PI * 2;
-    return [Math.cos(a) * r, 0, Math.sin(a) * r] as const;
-  };
-
   const myId = React.useMemo(
     () => (typeof window !== "undefined" ? getUserId() : "anon"),
     []
@@ -208,7 +188,7 @@ export default function GardenOverlay() {
     [myLastFromApi, myLastFromLocal]
   );
 
-  // Ir a mi flor
+  // Ir a mi flor (usa __controls publicados por la escena)
   type OrbitControlsLike = {
     target: { set: (x: number, y: number, z: number) => void };
     object: { position: { set: (x: number, y: number, z: number) => void } };
@@ -223,14 +203,6 @@ export default function GardenOverlay() {
       controls.object.position.set((fx ?? 0) + 4, (fy ?? 0) + 3, (fz ?? 0) + 4);
       controls.update?.();
     }
-    window.dispatchEvent(
-      new CustomEvent("flower-focus", {
-        detail: {
-          id: myLastFlower.id ?? "mine",
-          position: [fx, fy, fz] as const,
-        },
-      })
-    );
   }, [myLastFlower]);
 
   async function plant(messageFromUI: string) {
@@ -238,32 +210,29 @@ export default function GardenOverlay() {
     setErrMsg(null);
 
     const message = messageFromUI.trim().slice(0, 140) || undefined;
-    const look = tryGetLookAtOnGround();
-    const [px, py, pz] = (look ?? pickPosFallback()) as [
-      number,
-      number,
-      number
-    ];
-
-    const optimistic: Flower = {
-      id: `temp-${Date.now()}`,
-      message: message ?? null,
-      color: null,
-      created_at: new Date().toISOString(),
-      x: px,
-      y: py,
-      z: pz,
-      family: variant,
-      user_id: myId,
-      user_name: getUserName(),
-    };
-
     setPending(true);
     setMsg("");
 
     try {
+      // 1) Pedimos a la escena la posición y que haga el vuelo
+      const [px, py, pz] = await askSceneForPlantPosition();
+
+      const optimistic: Flower = {
+        id: `temp-${Date.now()}`,
+        message: message ?? null,
+        color: null,
+        created_at: new Date().toISOString(),
+        x: px,
+        y: py,
+        z: pz,
+        family: variant,
+        user_id: myId,
+        user_name: getUserName(),
+      };
+
       await mutate(
         async (current?: FlowersResponse): Promise<FlowersResponse> => {
+          // 2) Persistimos con la posición devuelta por la escena
           const res = await fetch("/api/flowers", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -294,31 +263,17 @@ export default function GardenOverlay() {
           const real = isRecord(json)
             ? (json as { flower?: Flower }).flower ?? null
             : null;
-          const ok =
-            isRecord(real) &&
-            typeof (real as Flower).id === "string" &&
-            "created_at" in (real as Flower);
 
-          const withPos: Flower | null = ok
+          const withPos: Flower | null = real
             ? ({ ...(real as Flower), x: px, y: py, z: pz } as Flower)
             : null;
 
-          saveLastFlower({ x: px, y: py, z: pz, id: withPos?.id ?? undefined });
+          // 3) Guardamos “mi flor” para botón rápido + SFX
+          if (withPos) saveLastFlower({ x: px, y: py, z: pz, id: withPos.id });
+          playSfx();
 
           const prev = current?.flowers ?? [];
           const next = [withPos, ...prev].filter(Boolean) as Flower[];
-
-          // SFX + señal de enfoque
-          playSfx();
-          window.dispatchEvent(
-            new CustomEvent("flower-focus", {
-              detail: {
-                id: (withPos?.id ?? optimistic.id) as string,
-                position: [px, py, pz] as const,
-              },
-            })
-          );
-
           return { flowers: next };
         },
         {
@@ -354,7 +309,6 @@ export default function GardenOverlay() {
 
   const ui = (
     <div className="ms-garden-overlay" aria-live="polite">
-      {/* Chip contador */}
       <div
         className="counter-chip"
         role="status"
@@ -364,7 +318,6 @@ export default function GardenOverlay() {
         Últimas flores: <strong>{isLoading ? "…" : total}</strong>
       </div>
 
-      {/* Barra plantar */}
       <form className="plant-bar" onSubmit={onSubmit} aria-busy={pending}>
         <div className="plant-header">
           <div className="panel-title">Plantar una flor</div>
@@ -469,7 +422,6 @@ export default function GardenOverlay() {
     </div>
   );
 
-  // Hasta que monte el cliente, no renderizamos (evita warnings)
   if (!mounted || !portalEl) return null;
   return createPortal(ui, portalEl);
 }

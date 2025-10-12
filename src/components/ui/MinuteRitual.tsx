@@ -1,3 +1,4 @@
+// src/components/MinuteRitual.tsx
 "use client";
 
 import * as React from "react";
@@ -17,53 +18,6 @@ const easeInOut = (t: number) => {
   return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
 };
 
-/** congela el scroll del documento mientras esté activo */
-function useScrollLock(lock: boolean) {
-  React.useEffect(() => {
-    if (!lock) return;
-    const scrollY = window.scrollY;
-    const prevOverflow = document.documentElement.style.overflow;
-    const prevPos = document.body.style.position;
-    const prevTop = document.body.style.top;
-    const prevWidth = document.body.style.width;
-
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = "100%";
-
-    const prevent = (e: Event) => e.preventDefault();
-    const onKey = (e: KeyboardEvent) => {
-      const nav = [
-        "ArrowUp",
-        "ArrowDown",
-        "PageUp",
-        "PageDown",
-        "Home",
-        "End",
-        " ",
-      ];
-      if (nav.includes(e.key)) e.preventDefault();
-    };
-
-    window.addEventListener("wheel", prevent, { passive: false });
-    window.addEventListener("touchmove", prevent, { passive: false });
-    window.addEventListener("keydown", onKey);
-
-    return () => {
-      document.documentElement.style.overflow = prevOverflow;
-      document.body.style.position = prevPos;
-      document.body.style.top = prevTop;
-      document.body.style.width = prevWidth;
-      window.scrollTo({ top: scrollY, behavior: "instant" as ScrollBehavior });
-
-      window.removeEventListener("wheel", prevent);
-      window.removeEventListener("touchmove", prevent);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [lock]);
-}
-
 export default function MinuteRitual({
   visibleK,
   durationMs = 60000,
@@ -75,7 +29,7 @@ export default function MinuteRitual({
   const startRef = React.useRef<number | null>(null);
   const rafRef = React.useRef<number | null>(null);
 
-  // ⚠️ NO leer matchMedia en render (causa mismatch).
+  // ⚠️ Respeta prefers-reduced-motion (solo para la respiración visual)
   const [reduced, setReduced] = React.useState(false);
   React.useEffect(() => {
     const m = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -85,13 +39,12 @@ export default function MinuteRitual({
     return () => m?.removeEventListener?.("change", update);
   }, []);
 
-  // Halo “respiratorio”: animado por rAF en estado (no en render).
-  const [breath, setBreath] = React.useState(0); // 0..1
+  // Halo “respiratorio”
+  const [breath, setBreath] = React.useState(0);
   React.useEffect(() => {
-    if (reduced) return; // respetar reduced motion
+    if (reduced) return;
     let raf: number | null = null;
     const loop = () => {
-      // 3s por ciclo
       const t = (performance.now() % 3000) / 3000;
       setBreath(easeInOut(t));
       raf = requestAnimationFrame(loop);
@@ -110,8 +63,7 @@ export default function MinuteRitual({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleK]);
 
-  // bloquear scroll mientras corre
-  useScrollLock(running && !done);
+  // 🔓 NO bloqueamos el scroll: se pidió que el usuario pueda seguir bajando/subiendo libremente.
 
   const start = React.useCallback(() => {
     if (running || done) return;
@@ -144,7 +96,7 @@ export default function MinuteRitual({
   const secondsLeft = Math.ceil((1 - k) * (durationMs / 1000));
 
   // ring SVG
-  const R = 118; // radio del aro exterior
+  const R = 118;
   const CIRC = 2 * Math.PI * R;
   const dash = CIRC * k;
 
@@ -181,7 +133,7 @@ export default function MinuteRitual({
             "radial-gradient( circle at 50% 50%, rgba(255,244,214,.9) 0%, rgba(255,255,255,.55) 48%, rgba(255,255,255,.15) 66%, transparent 72% )",
         }}
       >
-        {/* halo respiratorio (estado → sin mismatch) */}
+        {/* halo respiratorio */}
         <div
           aria-hidden
           style={{

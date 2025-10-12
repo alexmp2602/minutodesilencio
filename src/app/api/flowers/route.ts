@@ -1,4 +1,3 @@
-// src/app/api/flowers/route.ts
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseServer";
 
@@ -7,7 +6,6 @@ export const dynamic = "force-dynamic";
 export const preferredRegion = "home";
 export const revalidate = 0;
 
-// incluye user_id y family para el overlay
 const SELECT_COLS =
   "id, message, created_at, revived_at, wilted, color, x, y, z, user_id, user_name, family";
 
@@ -39,7 +37,6 @@ function netCause(c: unknown): NetCause {
   };
 }
 
-/** Intenta formatear correctamente un PostgrestError / FetchError / etc */
 function formatErrorMessage(e: unknown): string {
   if (isRecord(e)) {
     if (typeof e.message === "string" && e.message) return e.message;
@@ -63,7 +60,6 @@ function withNoCache(res: NextResponse) {
 function errJson(e: unknown, where: string, status = 500) {
   const cause = netCause((e as { cause?: unknown })?.cause);
   const msg = formatErrorMessage(e);
-  // Log útil en servidor
   console.error(`[api][${where}]`, { msg, cause, raw: e });
 
   return withNoCache(
@@ -103,7 +99,18 @@ function normalizeName(raw: unknown): string | null {
   return cleaned || null;
 }
 
-/** Respuesta a preflight CORS (por si algún cliente externo la hace) */
+/** Punto aleatorio uniforme dentro de un disco (radio <= HALF-6) */
+function randomXZ(): { x: number; z: number } {
+  const R = HALF - 6;
+  const u = Math.random();
+  const r = Math.sqrt(u) * R;
+  const theta = Math.random() * Math.PI * 2;
+  const x = r * Math.cos(theta);
+  const z = r * Math.sin(theta);
+  const [cx, cz] = clampArea(x, z);
+  return { x: cx, z: cz };
+}
+
 export async function OPTIONS() {
   return withNoCache(new NextResponse(null, { status: 204 }));
 }
@@ -133,7 +140,6 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    // Aceptamos solo JSON; si no se envía, tomamos {}
     const ct = req.headers.get("content-type")?.toLowerCase() || "";
     const raw = ct.includes("application/json")
       ? await req.json().catch(() => ({}))
@@ -142,25 +148,27 @@ export async function POST(req: Request) {
 
     const message = normalizeMessage(body.message);
 
-    // Coordenadas
-    let x = numOrNull(body.x);
-    const y = numOrNull(body.y);
-    let z = numOrNull(body.z);
-
-    // Si x/z están fuera del rango, se clampa
-    if (x != null && z != null) {
-      const [cx, cz] = clampArea(x, z);
+    // Si el cliente envió coords válidas, usalas; si no, random
+    const bx = numOrNull(body.x);
+    const bz = numOrNull(body.z);
+    let x: number, z: number;
+    if (bx != null && bz != null) {
+      const [cx, cz] = clampArea(bx, bz);
       x = cx;
       z = cz;
+    } else {
+      const p = randomXZ();
+      x = p.x;
+      z = p.z;
     }
 
-    // Color opcional
+    const y = numOrNull(body.y);
+
     const color =
       typeof body.color === "string" && body.color.trim()
         ? body.color.trim().slice(0, 32)
         : null;
 
-    // aceptar `variant` o `family`
     const rawFamily =
       (typeof body.variant === "string" ? body.variant : null) ??
       (typeof body.family === "string" ? body.family : null);
@@ -169,7 +177,6 @@ export async function POST(req: Request) {
         ? (rawFamily as "rose" | "tulip" | "daisy")
         : null;
 
-    // opcionales de identidad
     const user_id =
       typeof body.user_id === "string" && body.user_id
         ? body.user_id.slice(0, 120)
@@ -178,28 +185,33 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseServer();
 
+    const insertRow = {
+      message,
+      x,
+      y,
+      z,
+      color,
+      wilted: false,
+      family,
+      user_id,
+      user_name,
+    };
+
+    console.log("[api][flowers.POST] inserting @", { x, z, color, family });
+
     const { data, error } = await supabase
       .from("flowers")
-      .insert([
-        {
-          message,
-          x,
-          y,
-          z,
-          color,
-          wilted: false,
-          family,
-          user_id,
-          user_name,
-        },
-      ])
+      .insert([insertRow])
       .select(SELECT_COLS)
       .single();
 
     if (error) return errJson(error, "flowers.POST", 400);
 
     return withNoCache(
-      NextResponse.json({ ok: true, flower: data }, { status: 201 })
+      NextResponse.json(
+        { ok: true, flower: data, planted_at: { x, z } },
+        { status: 201 }
+      )
     );
   } catch (e) {
     return errJson(e, "flowers.POST", 500);

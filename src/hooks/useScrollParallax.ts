@@ -29,9 +29,6 @@ export default function useScrollParallax() {
   const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
   const getViewportHeight = () => {
-    // visualViewport maneja mejor barras del navegador en mobile
-    // fallback a innerHeight
-    // Nota: en SSR no se ejecuta este código.
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     return Math.max(
       1,
@@ -50,20 +47,15 @@ export default function useScrollParallax() {
     }
 
     const vh = getViewportHeight();
-    // Solo leemos top (y usamos height cacheado); rect.height se actualiza con ResizeObserver
     const rect = el.getBoundingClientRect();
     const height = skyHeightRef.current || rect.height || 1;
 
-    // Rango exacto mapeado con rect.top:
-    //  start: rect.top === vh
-    //  end:   rect.bottom === 0  => rect.top === -height
     const start = vh;
     const end = -height;
-    const denom = end - start || -1; // evita división por 0
-    const t = (rect.top - start) / denom; // mapea start..end -> 0..1
+    const denom = end - start || -1;
+    const t = (rect.top - start) / denom;
     const k = clamp01(t);
 
-    // Evitar renders si el cambio es minúsculo
     if (Math.abs(k - lastProgressRef.current) > epsilon) {
       lastProgressRef.current = k;
       setProgress(k);
@@ -73,8 +65,7 @@ export default function useScrollParallax() {
   const lastTickRef = useRef<number>(0);
   const loop = useCallback(
     (now: number) => {
-      // Si el usuario prefiere menos movimiento, muestreamos menos (≈10 FPS)
-      const minDelta = reducedMotion ? 100 : 0; // ms
+      const minDelta = reducedMotion ? 100 : 0;
       if (!lastTickRef.current || now - lastTickRef.current >= minDelta) {
         compute();
         lastTickRef.current = now;
@@ -87,7 +78,6 @@ export default function useScrollParallax() {
   const start = useCallback(() => {
     if (runningRef.current) return;
     runningRef.current = true;
-    // Primer cómputo inmediato para evitar frame en blanco
     compute();
     rafRef.current = requestAnimationFrame(loop);
   }, [compute, loop]);
@@ -102,7 +92,6 @@ export default function useScrollParallax() {
     const el = skyRef.current;
     if (!el) return;
 
-    // Observamos visibilidad del elemento para activar/desactivar rAF (ahorro de CPU)
     const io = new IntersectionObserver(
       (entries) => {
         const visible = entries.some((e) => e.isIntersecting);
@@ -111,13 +100,12 @@ export default function useScrollParallax() {
       },
       {
         root: null,
-        rootMargin: "100% 0px 100% 0px", // margen grande para activar un poco antes
+        rootMargin: "100% 0px 100% 0px",
         threshold: 0,
       }
     );
     io.observe(el);
 
-    // Observamos cambios de tamaño del sky para refrescar height cacheada
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver((entries) => {
@@ -133,11 +121,9 @@ export default function useScrollParallax() {
       });
       ro.observe(el);
     } else {
-      // Fallback: medimos una vez
       skyHeightRef.current = el.getBoundingClientRect().height || 1;
     }
 
-    // Resize/zoom/orientation: refrescamos métricas
     const onResize = () => compute();
     const onVVResize = () => compute();
     window.addEventListener("resize", onResize, { passive: true });
@@ -145,14 +131,12 @@ export default function useScrollParallax() {
       passive: true,
     } as AddEventListenerOptions);
 
-    // Pausar rAF cuando la pestaña no está visible (aún si IO dice visible)
     const onVisibility = () => {
       if (document.hidden) stop();
       else start();
     };
     document.addEventListener("visibilitychange", onVisibility);
 
-    // Cómputo inicial
     compute();
 
     return () => {
@@ -165,13 +149,11 @@ export default function useScrollParallax() {
     };
   }, [compute, start, stop]);
 
-  // Props para asignar el ref desde el DOM
   const skyProps = useMemo(
     () => ({
       ref: (el: HTMLElement | null) => {
         skyRef.current = el;
         if (el) {
-          // Actualizamos height cacheada y recomputamos al montar
           const rect = el.getBoundingClientRect();
           skyHeightRef.current = rect.height || skyHeightRef.current || 1;
           compute();

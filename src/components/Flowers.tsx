@@ -2,7 +2,7 @@
 "use client";
 
 import * as THREE from "three";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useLayoutEffect } from "react";
 import useSWR from "swr";
 import type { Flower } from "@/lib/types";
 import { fetcher } from "@/lib/fetcher";
@@ -13,6 +13,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 /* ----------------- config ----------------- */
 const CAP = 640;
 const MODEL_URL = "/models/flower.glb";
+const AREA = 200; // tamaño del jardín, para boundingSphere opcional
 
 /* ----------------- helpers ---------------- */
 type FlowersResponse = { flowers: Flower[] };
@@ -58,12 +59,12 @@ function positionFor(f: Flower): [number, number, number] {
     typeof f.y === "number" &&
     typeof f.z === "number"
   ) {
-    return [f.x, f.y, f.z];
+    // aseguramos no bajar del suelo
+    return [f.x, Math.max(0, f.y), f.z];
   }
   const rnd = seedFromString(f.id);
   const r = 3 + rnd() * 9;
   const a = rnd() * Math.PI * 2;
-  // y = 0 porque el modelo YA incluye tallo y lo normalizamos con base en y=0
   return [Math.cos(a) * r, 0, Math.sin(a) * r];
 }
 
@@ -92,11 +93,9 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
         const mesh = obj as THREE.Mesh;
         if (!mesh.geometry) return;
 
-        // clon + bake transform
         const g = mesh.geometry.clone();
         g.applyMatrix4(mesh.matrixWorld);
 
-        // limpiar morph/skin
         (g as THREE.BufferGeometry).morphAttributes = {} as Record<
           string,
           unknown
@@ -122,7 +121,7 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
       merged.rotateZ(-Math.PI / 2); // X -> Y
     }
 
-    // 2) Si la flor “mira para atrás”, la rotamos 180° en Y
+    // 2) Mirar hacia “adelante”
     merged.rotateY(Math.PI);
 
     // 3) Base a y=0
@@ -131,11 +130,16 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
     const height = Math.max(0.0001, bb.max.y - bb.min.y);
     merged.translate(0, -bb.min.y, 0);
 
-    // Limpieza
     (merged as THREE.BufferGeometry).morphAttributes = {};
     merged.deleteAttribute("skinIndex");
     merged.deleteAttribute("skinWeight");
     merged.computeVertexNormals();
+
+    // (opcional) bounding sphere grande para culling correcto si se dejara activo
+    merged.computeBoundingSphere();
+    if (merged.boundingSphere) {
+      merged.boundingSphere.radius = AREA / 2 + 40; // cubrir el jardín completo
+    }
 
     const baseScale = 1 / height;
     return { geom: merged, baseScale, loaded: true };
@@ -163,13 +167,12 @@ export default function Flowers() {
       const rnd = seedFromString(f.id);
       const scaleJitter = 0.85 + rnd() * 0.5; // 0.85..1.35
 
-      // Colores: sRGB -> lineal para que el material los aplique correcto
       const colorSRGB = f.color ? new THREE.Color(f.color) : colorFromId(f.id);
       const colorLinear = colorSRGB.clone().convertSRGBToLinear();
 
       const alive = f.alive ?? !f.wilted;
       const tiltA = rnd() * Math.PI * 2;
-      const tilt = !alive ? 0.25 + rnd() * 0.2 : 0; // inclina solo si está marchita
+      const tilt = !alive ? 0.25 + rnd() * 0.2 : 0;
       const rotX = Math.cos(tiltA) * tilt;
       const rotZ = Math.sin(tiltA) * tilt;
       const isMine = !!myId && f.user_id === myId;
@@ -187,20 +190,45 @@ export default function Flowers() {
 
   const hasGLB = loaded && !!geom;
 
+  // ref al InstancedMesh para togglear culling (robusto aunque también pasamos prop)
+  const instRef = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const m = instRef.current;
+    if (!m) return;
+    // 1) desactivar culling (principal fix)
+    m.frustumCulled = false;
+    // 2) por si en algún momento quisieras reactivarlo: deja lista una boundingSphere enorme
+    m.geometry?.computeBoundingSphere?.();
+    if (m.geometry?.boundingSphere) {
+      m.geometry.boundingSphere.radius = AREA / 2 + 40;
+    }
+  }, [hasGLB]);
+
   return (
     <>
       {hasGLB ? (
-        <Instances name="flowers" limit={CAP} range={items.length}>
+        <Instances
+          ref={instRef}
+          name="flowers"
+          limit={CAP}
+          range={items.length}
+          castShadow
+          receiveShadow
+          frustumCulled={false} // <- fix directo
+        >
           <primitive object={geom!} attach="geometry" />
           <meshStandardMaterial
-            vertexColors // <- necesario para que <Instance color=... /> funcione
-            color="#ffffff" // base blanca para no teñir
+            vertexColors
+            color="#ffffff"
             roughness={0.55}
             metalness={0.04}
+            // Si el pasto tiene transparencia, mantener depthWrite para que ocluya bien:
+            depthWrite
+            depthTest
           />
           {items.map(({ f, pos, scaleJitter, colorLinear, rotX, rotZ }) => {
             const s = scaleJitter * baseScale;
-            const y = pos[1]; // ya normalizado: base del modelo en y=0
+            const y = Math.max(0, pos[1]); // mantener por encima del plano
             return (
               <Instance
                 key={`flower-${f.id}`}
@@ -225,8 +253,15 @@ export default function Flowers() {
           })}
         </Instances>
       ) : (
-        // Fallback mientras carga el GLB
-        <Instances name="flowers-fallback" limit={CAP} range={items.length}>
+        <Instances
+          ref={instRef}
+          name="flowers-fallback"
+          limit={CAP}
+          range={items.length}
+          frustumCulled={false}
+          castShadow
+          receiveShadow
+        >
           <cylinderGeometry args={[0.05, 0.05, 1, 8]} />
           <meshStandardMaterial roughness={0.7} metalness={0.0} />
           {items.map(({ f, pos, scaleJitter }) => {
@@ -234,7 +269,7 @@ export default function Flowers() {
             return (
               <Instance
                 key={`flower-${f.id}`}
-                position={[pos[0], pos[1] + 0.5 * s, pos[2]]}
+                position={[pos[0], Math.max(0, pos[1]) + 0.5 * s, pos[2]]}
                 scale={[s, s, s]}
                 color={"#7aa34f"}
               />
