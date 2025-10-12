@@ -173,7 +173,7 @@ export default function Flowers() {
       const rotX = Math.cos(tiltA) * tilt;
       const rotZ = Math.sin(tiltA) * tilt;
       const isMine = !!myId && f.user_id === myId;
-      return { f, pos, scaleJitter, colorLinear, alive, rotX, rotZ, isMine };
+      return { f, pos, scaleJitter, colorLinear, rotX, rotZ, isMine };
     });
   }, [data?.flowers, myId]);
 
@@ -198,33 +198,31 @@ export default function Flowers() {
             roughness={0.55}
             metalness={0.04}
           />
-          {items.map(
-            ({ f, pos, scaleJitter, colorLinear, rotX, rotZ, alive }) => {
-              const s = scaleJitter * baseScale;
-              const y = pos[1]; // ya normalizado: base del modelo en y=0
-              return (
-                <Instance
-                  key={`flower-${f.id}`}
-                  position={[pos[0], y, pos[2]]}
-                  scale={[s, s, s]}
-                  rotation={[rotX, 0, rotZ]}
-                  color={colorLinear}
-                  onPointerOver={(e: ThreeEvent<PointerEvent>) => {
-                    e.stopPropagation();
-                    setHoverId(f.id);
-                  }}
-                  onPointerOut={(e: ThreeEvent<PointerEvent>) => {
-                    e.stopPropagation();
-                    setHoverId((id) => (id === f.id ? null : id));
-                  }}
-                  onClick={(e: ThreeEvent<PointerEvent>) => {
-                    e.stopPropagation();
-                    handleSelect(f.id, [pos[0], y, pos[2]]);
-                  }}
-                />
-              );
-            }
-          )}
+          {items.map(({ f, pos, scaleJitter, colorLinear, rotX, rotZ }) => {
+            const s = scaleJitter * baseScale;
+            const y = pos[1]; // ya normalizado: base del modelo en y=0
+            return (
+              <Instance
+                key={`flower-${f.id}`}
+                position={[pos[0], y, pos[2]]}
+                scale={[s, s, s]}
+                rotation={[rotX, 0, rotZ]}
+                color={colorLinear}
+                onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+                  e.stopPropagation();
+                  setHoverId(f.id);
+                }}
+                onPointerOut={(e: ThreeEvent<PointerEvent>) => {
+                  e.stopPropagation();
+                  setHoverId((id) => (id === f.id ? null : id));
+                }}
+                onClick={(e: ThreeEvent<PointerEvent>) => {
+                  e.stopPropagation();
+                  handleSelect(f.id, [pos[0], y, pos[2]]);
+                }}
+              />
+            );
+          })}
         </Instances>
       ) : (
         // Fallback mientras carga el GLB

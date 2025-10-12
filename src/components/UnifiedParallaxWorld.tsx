@@ -32,7 +32,11 @@ declare global {
   }
 }
 
-type Props = { minuteProgress?: number };
+type Props = {
+  minuteProgress?: number;
+  /** compat con page.tsx (no se usa en este componente) */
+  introProgress?: number;
+};
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const easeInOut = (t: number) => {
@@ -121,7 +125,11 @@ function PublishGlobals({
   return null;
 }
 
-export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
+export default function UnifiedParallaxWorld({
+  minuteProgress = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  introProgress,
+}: Props) {
   const [dpr, setDpr] = useState<[number, number] | number>([1, 2]);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [grabbing, setGrabbing] = useState(false);
