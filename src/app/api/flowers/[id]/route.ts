@@ -1,5 +1,5 @@
 // src/app/api/flowers/[id]/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
@@ -33,32 +33,30 @@ export async function OPTIONS() {
   return noCache(new NextResponse(null, { status: 204 }));
 }
 
+// 👇 OJO: Next 15 → NextRequest y params como Promise<{ id: string }>
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  ctx: { params: Promise<{ id: string }> }
 ) {
   const where = "flowers.[id].PATCH";
+
   try {
-    const id = params?.id ?? "";
+    const { id } = await ctx.params; // ✅ Next 15 requiere await
     if (!UUID_RE.test(id)) return errJson("ID inválido", where, 400);
 
-    interface PatchBody {
-      message?: unknown;
-    }
-    const body = await req.json().catch(() => ({} as PatchBody));
+    type PatchBody = { message?: unknown };
+    const body: PatchBody = await req.json().catch(() => ({} as PatchBody));
     const message = normalizeMessage(body.message);
 
     const supabase = getSupabaseServer();
 
-    // 1) ¿La fila existe?
+    // 1) Comprobar existencia (para diferenciar 404 vs RLS)
     const exist = await supabase
       .from("flowers")
       .select("id")
       .eq("id", id)
       .maybeSingle();
-
     if (exist.error) {
-      // error real del select
       return errJson(
         exist.error.message ?? "Error al verificar existencia",
         where,
@@ -66,23 +64,22 @@ export async function PATCH(
       );
     }
     if (!exist.data) {
-      // no existe
       return errJson("No encontrado", where, 404);
     }
 
-    // 2) Intento de update
+    // 2) Update + retorno de fila
     const upd = await supabase
       .from("flowers")
       .update({ message })
       .eq("id", id)
       .select(SELECT_COLS)
-      .maybeSingle();
+      .maybeSingle(); // evita “Cannot coerce…”
 
     if (upd.error) {
       return errJson(upd.error.message ?? "Error al actualizar", where, 400);
     }
     if (!upd.data) {
-      // Existe pero update afectó 0 filas -> casi seguro RLS
+      // Existe pero 0 filas afectadas → casi seguro RLS si no usás service role
       return errJson("RLS/No autorizado (0 filas actualizadas)", where, 403);
     }
 
