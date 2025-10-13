@@ -35,6 +35,7 @@ declare global {
       target: { set: (x: number, y: number, z: number) => void };
       object: { position: { set: (x: number, y: number, z: number) => void } };
       update?: () => void;
+      setEnabled?: (enabled: boolean) => void;
     };
   }
 }
@@ -47,7 +48,10 @@ const easeInOut = (t: number) => {
   return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
 };
 
-/* --------- marcador pulsante (igual que antes) --------- */
+/** ✨ offset suave para “elevar” el bloque de nubes/minuto sin alejar tanto la cámara */
+const MINUTE_YOFF = 0.55;
+
+/* --------- marcador pulsante --------- */
 function FocusPulse({ pos }: { pos: THREE.Vector3 }) {
   const ref = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
@@ -81,8 +85,8 @@ function ProximitySensor({
 }) {
   const { camera } = useThree();
   const target = useMemo(() => new THREE.Vector3(0, 0.6, 0), []);
-  const ENTER_DIST = 7.5;
-  const EXIT_DIST = 10.0;
+  const ENTER_DIST = 12.4;
+  const EXIT_DIST = 14.0;
   const activeRef = useRef(false);
 
   useFrame(() => {
@@ -100,7 +104,7 @@ function ProximitySensor({
   return null;
 }
 
-/* --------- vuelo al plantar (igual que antes) --------- */
+/* --------- vuelo al plantar --------- */
 function PlantingLogic({
   controlsRef,
   setGardenActive,
@@ -207,7 +211,7 @@ function PlantingLogic({
   return null;
 }
 
-/* --------- rig de descenso (igual) --------- */
+/* --------- rig de descenso (valores “clásicos”) --------- */
 function TimelineRig({
   minuteK,
   gardenActive,
@@ -218,7 +222,7 @@ function TimelineRig({
   const { camera, scene } = useThree();
   const target = useMemo(() => new THREE.Vector3(0, 0.6, 0), []);
   const startPos = useMemo(() => new THREE.Vector3(0, 28, 30), []);
-  const endPos = useMemo(() => new THREE.Vector3(4, 3, 4), []);
+  const endPos = useMemo(() => new THREE.Vector3(7.5, 6.8, 7.5), []);
   const startSph = useMemo(
     () => new THREE.Spherical().setFromVector3(startPos.clone().sub(target)),
     [startPos, target]
@@ -237,6 +241,7 @@ function TimelineRig({
       }
       return;
     }
+
     const idle = 0.02 * Math.sin(performance.now() * 0.0012);
     const k = easeInOut(minuteK);
     const r = THREE.MathUtils.lerp(startSph.radius, endSph.radius, k);
@@ -253,8 +258,12 @@ function TimelineRig({
     );
     const f = scene.fog as THREE.Fog | null;
     if (f) {
-      f.near = THREE.MathUtils.lerp(10, 12, k);
-      f.far = THREE.MathUtils.lerp(26, 42, k);
+      const NEAR_START = 0; // antes ~10
+      const FAR_START = 0; // antes ~26
+      const NEAR_END = 0;
+      const FAR_END = 40;
+      f.near = THREE.MathUtils.lerp(NEAR_START, NEAR_END, k);
+      f.far = THREE.MathUtils.lerp(FAR_START, FAR_END, k);
     }
   });
   return null;
@@ -277,6 +286,7 @@ function PublishGlobals({
           position: { set: (x, y, z) => c.object.position.set(x, y, z) },
         },
         update: () => c.update?.(),
+        setEnabled: (enabled: boolean) => (c.enabled = enabled),
       };
     }
     return () => {
@@ -320,7 +330,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
   const minuteK = clamp01(minuteProgress);
   const fogColor = useMemo(() => new THREE.Color("#eab565"), []);
 
-  // scroll passthrough solo fuera del jardín (igual)
+  // scroll passthrough solo fuera del jardín
   const lastTouchY = useRef<number | null>(null);
   const scrollByPage = (dy: number) => {
     const el =
@@ -364,7 +374,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
     };
   }, [gardenActive]);
 
-  // bloquear scroll dentro del jardín (igual)
+  // bloquear scroll dentro del jardín
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
@@ -398,7 +408,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       camera={{
         position: [0, 28, 30],
         fov: 50,
-        near: 0.01, // ★ más chico: evita clipping muy cercano
+        near: 0.01,
         far: 220,
       }}
       dpr={dpr}
@@ -437,7 +447,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           setMyFlowerPos={setMyFlowerPos}
         />
 
-        {/* cielo/nubes/luces/escena… (igual) */}
+        {/* Cielo + nubes “levemente” elevadas */}
         <Sky
           sunPosition={[0, 5.5, -10]}
           turbidity={12}
@@ -448,7 +458,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           inclination={0.47}
           azimuth={180}
         />
-        <group position={[0, 0.3, 0]}>
+        <group position={[0, 0.3 + MINUTE_YOFF, 0]}>
           <Clouds material={THREE.MeshLambertMaterial}>
             <Cloud
               seed={1}
@@ -495,14 +505,14 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
 
         <Suspense fallback={null}>
           <group>
-            <Ground />
+            <Ground radius={60} />
             <GrassField
               count={12000}
-              areaSize={200}
+              areaRadius={60}
               bladeHeight={0.65}
               wind={0.8}
             />
-            <Flowers />
+            <Flowers gardenActive={overlayVisible} />
           </group>
         </Suspense>
 
@@ -521,16 +531,22 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
             minDistance={3.2}
             maxDistance={120}
             zoomSpeed={reducedMotion ? 0.7 : 1.0}
+            onStart={() =>
+              ((
+                window as Window & { __orbitDragging?: boolean }
+              ).__orbitDragging = true)
+            }
+            onEnd={() =>
+              ((
+                window as Window & { __orbitDragging?: boolean }
+              ).__orbitDragging = false)
+            }
             onChange={(e) => {
-              // IMPORTANTE: NO llamar a c.update() acá, causa recursión infinita.
               const c = e?.target as OrbitControlsImpl | undefined;
               if (!c) return;
               const cam = c.object as THREE.PerspectiveCamera;
-
-              // Clamps suaves (sin update síncrono)
               if (cam.position.y < 1.6) cam.position.y = 1.6;
               if (c.target.y < 0.5) c.target.y = 0.5;
-              // el render del próximo frame aplicará los cambios
             }}
           />
         )}

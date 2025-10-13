@@ -80,29 +80,12 @@ export default function RootLayout({
   return (
     <html lang="es-AR" dir="ltr" className="h-full" suppressHydrationWarning>
       <head>
-        {/* Preloads clave del proyecto */}
-        <link
-          rel="preload"
-          href="/ambience-soft.mp3"
-          as="audio"
-          type="audio/mpeg"
-          crossOrigin="anonymous"
-        />
-        <link
-          rel="preload"
-          href="/ambience-nature.mp3"
-          as="audio"
-          type="audio/mpeg"
-          crossOrigin="anonymous"
-        />
-        <link
-          rel="preload"
-          href="/sfx/plant.mp3"
-          as="audio"
-          type="audio/mpeg"
-          crossOrigin="anonymous"
-        />
-        <link rel="preload" href="/og.jpg" as="image" type="image/jpeg" />
+        {/* Prefetch de audio (evita warnings por recursos no “usados” de inmediato) */}
+        <link rel="prefetch" href="/audio/plant.mp3" crossOrigin="anonymous" />
+
+        {/* No pre-cargamos /og.jpg: sólo lo usan los scrapers OG */}
+        {/* <link rel="preload" href="/og.jpg" as="image" type="image/jpeg" /> */}
+
         {/* Color-scheme explícito para UA que no leen metadata.other */}
         <meta name="color-scheme" content="dark light" />
       </head>

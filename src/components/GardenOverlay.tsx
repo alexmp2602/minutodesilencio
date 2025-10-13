@@ -7,6 +7,7 @@ import { fetcher } from "@/lib/fetcher";
 import type { Flower } from "@/lib/types";
 import TI from "@/components/ui/TablerIcon";
 import { useMuteStore } from "@/state/muteStore";
+import useSfx from "@/hooks/useSfx";
 
 type FlowersResponse = { flowers: Flower[] };
 const VARIANTS = ["rose", "tulip", "daisy"] as const;
@@ -72,7 +73,7 @@ function getUserName(): string | null {
   }
 }
 
-/* Persistimos última flor (para “Ir a mi flor”) */
+/* ---------- persistencia local ---------- */
 type LastFlower = { x: number; y: number; z: number; id?: string };
 const LAST_KEY = "ms:lastFlower";
 function saveLastFlower(pos: LastFlower) {
@@ -110,7 +111,7 @@ function askSceneForPlantPosition(): Promise<
     window.addEventListener("ms:plant:done", once as EventListener, {
       once: true,
     });
-    window.dispatchEvent(new CustomEvent("ms:plant")); // dispara en la escena
+    window.dispatchEvent(new CustomEvent("ms:plant"));
   });
 }
 
@@ -118,7 +119,10 @@ export default function GardenOverlay() {
   const { data, isLoading, error, mutate } = useSWR<FlowersResponse>(
     "/api/flowers",
     fetcher,
-    { revalidateOnFocus: false, revalidateOnReconnect: true }
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+    }
   );
 
   const [pending, setPending] = React.useState(false);
@@ -138,34 +142,14 @@ export default function GardenOverlay() {
   const [idx, setIdx] = React.useState(0);
   const variant = VARIANTS[idx]!;
 
-  // 🔊 Zustand
+  // 🔊 sonido
   const muted = useMuteStore((s) => s.muted);
   const toggleMute = useMuteStore((s) => s.toggleMute);
-
-  // SFX plantar (si no existe el archivo, no rompe)
-  const sfxRef = React.useRef<HTMLAudioElement | null>(null);
-  React.useEffect(() => {
-    const el = new Audio("/sfx/plant.mp3");
-    el.preload = "auto";
-    el.crossOrigin = "anonymous";
-    el.volume = 0.9;
-    sfxRef.current = el;
-    return () => {
-      try {
-        el.pause();
-        el.srcObject = null;
-      } catch {}
-    };
-  }, []);
+  const { playFile } = useSfx();
   const playSfx = React.useCallback(() => {
     if (muted) return;
-    const el = sfxRef.current;
-    if (!el) return;
-    try {
-      el.currentTime = 0;
-      void el.play();
-    } catch {}
-  }, [muted]);
+    playFile([{ src: "/audio/plant.mp3", type: "audio/mpeg" }]);
+  }, [muted, playFile]);
 
   const myId = React.useMemo(
     () => (typeof window !== "undefined" ? getUserId() : "anon"),
@@ -188,7 +172,7 @@ export default function GardenOverlay() {
     [myLastFromApi, myLastFromLocal]
   );
 
-  // Ir a mi flor (usa __controls publicados por la escena)
+  /* ---------------- Navegar hasta mi flor ---------------- */
   type OrbitControlsLike = {
     target: { set: (x: number, y: number, z: number) => void };
     object: { position: { set: (x: number, y: number, z: number) => void } };
@@ -205,39 +189,20 @@ export default function GardenOverlay() {
     }
   }, [myLastFlower]);
 
-  async function plant(messageFromUI: string) {
-    if (pending) return;
+  /* ---------------- Crear flor ---------------- */
+  async function createFlower(message: string) {
     setErrMsg(null);
-
-    const message = messageFromUI.trim().slice(0, 140) || undefined;
     setPending(true);
-    setMsg("");
-
     try {
-      // 1) Pedimos a la escena la posición y que haga el vuelo
       const [px, py, pz] = await askSceneForPlantPosition();
-
-      const optimistic: Flower = {
-        id: `temp-${Date.now()}`,
-        message: message ?? null,
-        color: null,
-        created_at: new Date().toISOString(),
-        x: px,
-        y: py,
-        z: pz,
-        family: variant,
-        user_id: myId,
-        user_name: getUserName(),
-      };
 
       await mutate(
         async (current?: FlowersResponse): Promise<FlowersResponse> => {
-          // 2) Persistimos con la posición devuelta por la escena
           const res = await fetch("/api/flowers", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              message,
+              message: message || undefined,
               x: px,
               y: py,
               z: pz,
@@ -263,12 +228,10 @@ export default function GardenOverlay() {
           const real = isRecord(json)
             ? (json as { flower?: Flower }).flower ?? null
             : null;
-
           const withPos: Flower | null = real
             ? ({ ...(real as Flower), x: px, y: py, z: pz } as Flower)
             : null;
 
-          // 3) Guardamos “mi flor” para botón rápido + SFX
           if (withPos) saveLastFlower({ x: px, y: py, z: pz, id: withPos.id });
           playSfx();
 
@@ -277,7 +240,23 @@ export default function GardenOverlay() {
           return { flowers: next };
         },
         {
-          optimisticData: { flowers: [optimistic, ...(data?.flowers ?? [])] },
+          optimisticData: {
+            flowers: [
+              {
+                id: `temp-${Date.now()}`,
+                message: message || null,
+                color: null,
+                created_at: new Date().toISOString(),
+                x: 0,
+                y: 0,
+                z: 0,
+                family: variant,
+                user_id: myId,
+                user_name: getUserName(),
+              },
+              ...(data?.flowers ?? []),
+            ],
+          },
           rollbackOnError: true,
           revalidate: true,
         }
@@ -292,9 +271,83 @@ export default function GardenOverlay() {
     }
   }
 
+  /* ---------------- Actualizar mensaje ---------------- */
+  async function updateMyFlower(messageFromUI: string) {
+    if (!myLastFromApi?.id) {
+      await mutate();
+      setErrMsg("No encontramos tu flor en el servidor. Probá recargar.");
+      return;
+    }
+
+    setErrMsg(null);
+    setPending(true);
+
+    const cleaned = (messageFromUI ?? "").replace(/\s+/g, " ").trim();
+    const payload: { message: string | null } = {
+      message: cleaned ? cleaned.slice(0, 140) : null,
+    };
+
+    try {
+      const res = await fetch(`/api/flowers/${myLastFromApi.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: payload.message }),
+      });
+
+      let json: unknown = null;
+      try {
+        json = await res.json();
+      } catch {}
+
+      if (!res.ok) {
+        const apiError =
+          typeof json === "object" &&
+          json &&
+          "error" in (json as Record<string, unknown>) &&
+          typeof (json as Record<string, unknown>).error === "string"
+            ? ((json as Record<string, unknown>).error as string)
+            : `HTTP ${res.status}`;
+        throw new Error(apiError);
+      }
+
+      await mutate(
+        (current?: FlowersResponse) => {
+          const prev = current?.flowers ?? [];
+          const next = prev.map((f) =>
+            f.id === myLastFromApi!.id ? { ...f, message: payload.message } : f
+          );
+          return { flowers: next };
+        },
+        { revalidate: true }
+      );
+    } catch (e: unknown) {
+      await mutate(
+        (current?: FlowersResponse) => {
+          const prev = current?.flowers ?? [];
+          const next = prev.map((f) =>
+            f.id === myLastFromApi!.id ? { ...f, message: payload.message } : f
+          );
+          return { flowers: next };
+        },
+        { revalidate: true }
+      );
+      setErrMsg(
+        e instanceof Error
+          ? `No se pudo guardar en el servidor (${e.message}). El cambio se ve localmente.`
+          : "No se pudo guardar en el servidor. El cambio se ve localmente."
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  /* ---------------- Submit handler ---------------- */
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    plant(msg);
+    if (pending) return;
+    const message = msg;
+    if (myLastFromApi) updateMyFlower(message);
+    else createFlower(message);
   };
 
   const labelFor = (v: Variant) =>
@@ -303,10 +356,11 @@ export default function GardenOverlay() {
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !pending) {
       e.preventDefault();
-      plant(msg);
+      onSubmit(e as unknown as React.FormEvent<HTMLFormElement>);
     }
   };
 
+  /* ---------------- UI ---------------- */
   const ui = (
     <div className="ms-garden-overlay" aria-live="polite">
       <div
@@ -314,13 +368,23 @@ export default function GardenOverlay() {
         role="status"
         aria-live="polite"
         title="Cantidad total de flores"
+        style={{
+          color: "var(--blue-french, #365ec7)",
+          background: "var(--panel-chip-bg, rgba(255,255,255,.22))",
+          border: "1px solid var(--panel-chip-border, rgba(255,255,255,.45))",
+          boxShadow:
+            "0 3px 12px rgba(0,0,0,.18), inset 0 0 8px rgba(255,255,255,.15)",
+          backdropFilter: "blur(6px)",
+        }}
       >
         Últimas flores: <strong>{isLoading ? "…" : total}</strong>
       </div>
 
       <form className="plant-bar" onSubmit={onSubmit} aria-busy={pending}>
         <div className="plant-header">
-          <div className="panel-title">Plantar una flor</div>
+          <div className="panel-title">
+            {myLastFromApi ? "Tu flor" : "Plantar una flor"}
+          </div>
 
           <div className="header-actions">
             <button
@@ -355,48 +419,60 @@ export default function GardenOverlay() {
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Dejar un mensaje…"
+            placeholder={
+              myLastFromApi
+                ? myLastFromApi.message
+                  ? "Editar tu mensaje…"
+                  : "Dejar un mensaje en tu flor…"
+                : "Dejar un mensaje…"
+            }
             maxLength={140}
             className="input"
             autoComplete="off"
             disabled={pending}
           />
 
-          <div className="picker" aria-label="Elegir tipo de flor" role="group">
-            <button
-              type="button"
-              className="picker-btn"
-              onClick={() =>
-                setIdx((i) => (i + VARIANTS.length - 1) % VARIANTS.length)
-              }
-              aria-label="Anterior"
-              title="Anterior"
-              disabled={pending}
-            >
-              <TI name="chev-left" />
-            </button>
-
+          {!myLastFromApi && (
             <div
-              className="picker-current"
-              title={labelFor(variant)}
-              aria-live="polite"
+              className="picker"
+              aria-label="Elegir tipo de flor"
+              role="group"
             >
-              {variant === "tulip" && <TI name="tulip" />}
-              {variant === "daisy" && <TI name="daisy" />}
-              {variant === "rose" && <TI name="rose" />}
-            </div>
+              <button
+                type="button"
+                className="picker-btn"
+                onClick={() =>
+                  setIdx((i) => (i + VARIANTS.length - 1) % VARIANTS.length)
+                }
+                aria-label="Anterior"
+                title="Anterior"
+                disabled={pending}
+              >
+                <TI name="chev-left" />
+              </button>
 
-            <button
-              type="button"
-              className="picker-btn"
-              onClick={() => setIdx((i) => (i + 1) % VARIANTS.length)}
-              aria-label="Siguiente"
-              title="Siguiente"
-              disabled={pending}
-            >
-              <TI name="chev-right" />
-            </button>
-          </div>
+              <div
+                className="picker-current"
+                title={labelFor(variant)}
+                aria-live="polite"
+              >
+                {variant === "tulip" && <TI name="tulip" />}
+                {variant === "daisy" && <TI name="daisy" />}
+                {variant === "rose" && <TI name="rose" />}
+              </div>
+
+              <button
+                type="button"
+                className="picker-btn"
+                onClick={() => setIdx((i) => (i + 1) % VARIANTS.length)}
+                aria-label="Siguiente"
+                title="Siguiente"
+                disabled={pending}
+              >
+                <TI name="chev-right" />
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -404,7 +480,13 @@ export default function GardenOverlay() {
             aria-disabled={pending}
             disabled={pending}
           >
-            {pending ? "Plantando…" : "Plantar"}
+            {pending
+              ? myLastFromApi
+                ? "Guardando…"
+                : "Plantando…"
+              : myLastFromApi
+              ? "Actualizar"
+              : "Plantar"}
           </button>
         </div>
 

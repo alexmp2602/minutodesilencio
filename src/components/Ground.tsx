@@ -1,4 +1,4 @@
-// app/components/Ground.tsx
+// src/components/Ground.tsx
 "use client";
 
 import * as THREE from "three";
@@ -6,19 +6,18 @@ import { useEffect, useMemo, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 
 type Props = {
-  /** Tamaño del plano de terreno (world units) */
   size?: number;
-  /** Segmentos de la malla (cuadrícula size x size) */
   segments?: number;
-  /** Amplitud del relieve (altura relativa de colinas) */
   amplitude?: number;
-  /** Semilla para generar texturas y offsets de forma estable */
   seed?: number;
+  /** Radio visual del jardín circular */
+  radius?: number;
 };
 
-/* ===========================
-   RNG determinístico ligero
-   =========================== */
+/* ===== Config ===== */
+const GARDEN_RADIUS_DEFAULT = 60;
+
+/* RNG determinístico ligero */
 function mulberry32(seed = 1) {
   let t = seed >>> 0;
   return () => {
@@ -29,9 +28,7 @@ function mulberry32(seed = 1) {
   };
 }
 
-/* ===========================
-   PALETA “SUNSET GRASS”
-   =========================== */
+/* Paleta */
 const PALETTE = {
   baseA: "#5e9836",
   baseB: "#84b94f",
@@ -39,7 +36,7 @@ const PALETTE = {
   roughMid: "#7a7a7a",
 } as const;
 
-/* ---------- Texturas procedurales (color / rough) ---------- */
+/* Texturas procedurales */
 function makeGrassColor(rng: () => number, size = 512): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = size;
@@ -60,7 +57,6 @@ function makeGrassColor(rng: () => number, size = 512): THREE.CanvasTexture {
   ctx.fillStyle = radial;
   ctx.fillRect(0, 0, size, size);
 
-  // manchas suaves
   for (let i = 0; i < 1300; i++) {
     const r = rng() * (size * 0.03);
     const x = rng() * size;
@@ -89,7 +85,6 @@ function makeGrassColor(rng: () => number, size = 512): THREE.CanvasTexture {
     ctx.fill();
   }
 
-  // realce central muy sutil
   if (PALETTE.centerLift > 0) {
     const lift = ctx.createRadialGradient(
       cx,
@@ -150,7 +145,7 @@ function makeGrassRough(rng: () => number, size = 512): THREE.CanvasTexture {
   return tex;
 }
 
-/* ---------- Relieve (colinas suaves) ---------- */
+/* Relieve (colinas) */
 function makeHillsGeometry(
   width = 200,
   depth = 200,
@@ -187,24 +182,23 @@ function makeHillsGeometry(
   return geo;
 }
 
-/* ---------- Componente ---------- */
+/* Componente */
 export default function Ground({
   size = 200,
   segments = 240,
   amplitude = 0.6,
   seed = 1,
+  radius = GARDEN_RADIUS_DEFAULT,
 }: Props) {
   const { gl } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
 
-  // RNG estable para texturas y offsets
   const rng = useMemo(() => mulberry32(seed), [seed]);
 
   const { colorMap, roughMap, bumpMap, hillsGeo } = useMemo(() => {
     const color = makeGrassColor(rng, 512);
     const rough = makeGrassRough(rng, 512);
 
-    // repetición moderada + offset estable
     const repeatU = 14 + rng() * 6;
     const repeatV = 14 + rng() * 6;
     color.repeat.set(repeatU, repeatV);
@@ -215,12 +209,10 @@ export default function Ground({
     color.offset.set(offU, offV);
     rough.offset.set(offU, offV);
 
-    // Anisotropía cuidada
     const maxAniso = Math.min(8, gl.capabilities.getMaxAnisotropy());
     color.anisotropy = maxAniso;
     rough.anisotropy = maxAniso;
 
-    // Bump derive de rough (relieve micro)
     const bump = rough.clone();
     bump.name = "GroundBump";
 
@@ -228,17 +220,14 @@ export default function Ground({
     hills.name = "GroundHills";
 
     return { colorMap: color, roughMap: rough, bumpMap: bump, hillsGeo: hills };
-    // gl es estable; size/segments/amplitude cambian la geometría
   }, [gl, size, segments, amplitude, rng]);
 
-  // Malla estática: fijamos matrix una vez
   useEffect(() => {
     const m = meshRef.current;
     if (!m) return;
     m.updateMatrix();
   }, []);
 
-  // Limpieza de recursos al desmontar o cambiar parámetros
   useEffect(() => {
     return () => {
       colorMap.dispose();
@@ -247,6 +236,57 @@ export default function Ground({
       hillsGeo.dispose();
     };
   }, [colorMap, roughMap, bumpMap, hillsGeo]);
+
+  const material = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      color: "#6ea43e",
+      map: colorMap,
+      roughnessMap: roughMap,
+      roughness: 0.96,
+      metalness: 0.0,
+      bumpMap: bumpMap,
+      bumpScale: 0.008,
+      envMapIntensity: 0.15,
+      side: THREE.FrontSide,
+      fog: true,
+      transparent: true, // necesario para el fade radial
+      depthWrite: true,
+    });
+
+    // Máscara circular suave basada en world position
+    m.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <common>",
+        `
+        #include <common>
+        varying vec3 vWorldPos;
+        `
+      );
+      shader.vertexShader = shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `
+        #include <begin_vertex>
+        vec4 wp = modelMatrix * vec4(transformed, 1.0);
+        vWorldPos = wp.xyz;
+        `
+      );
+
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <output_fragment>",
+        `
+        // radio normalizado (0 en centro, 1 en borde)
+        float r = length(vWorldPos.xz);
+        float k = smoothstep(${radius.toFixed(3)}, ${(radius * 0.85).toFixed(
+          3
+        )}, r);
+        gl_FragColor.a *= (1.0 - k);
+        #include <output_fragment>
+        `
+      );
+    };
+
+    return m;
+  }, [bumpMap, colorMap, roughMap, radius]);
 
   return (
     <mesh
@@ -259,18 +299,7 @@ export default function Ground({
       matrixAutoUpdate={false}
       renderOrder={0}
     >
-      <meshStandardMaterial
-        color={"#6ea43e"} // el map sRGB gobierna
-        map={colorMap}
-        roughnessMap={roughMap}
-        roughness={0.96}
-        metalness={0.0}
-        bumpMap={bumpMap}
-        bumpScale={0.008}
-        envMapIntensity={0.15}
-        side={THREE.FrontSide}
-        fog
-      />
+      <primitive attach="material" object={material} />
     </mesh>
   );
 }
