@@ -32,6 +32,7 @@ export const viewport: Viewport = {
 
 const siteUrl = "https://minutodesilencio.vercel.app";
 const siteName = "Minuto de Silencio";
+const ogImage = "/minutodesilencio.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -41,8 +42,9 @@ export const metadata: Metadata = {
     "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
   alternates: { canonical: siteUrl + "/" },
   other: { "color-scheme": "dark light" },
-  // 🔧 Alineado con el archivo real en /public/manifest.webmanifest
-  manifest: "/manifest.webmanifest",
+
+  manifest: "/site.webmanifest",
+
   icons: {
     icon: [
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
@@ -55,11 +57,13 @@ export const metadata: Metadata = {
       { rel: "mask-icon", url: "/safari-pinned-tab.svg", color: "#0b0d10" },
     ],
   },
+
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: siteName,
   },
+
   openGraph: {
     type: "website",
     url: siteUrl,
@@ -67,8 +71,16 @@ export const metadata: Metadata = {
     title: siteName,
     description:
       "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
-    images: [{ url: "/og.jpg", width: 1200, height: 630, alt: siteName }],
+    images: [{ url: ogImage, alt: siteName }],
     locale: "es_AR",
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: siteName,
+    description:
+      "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
+    images: [ogImage],
   },
 };
 
@@ -80,13 +92,7 @@ export default function RootLayout({
   return (
     <html lang="es-AR" dir="ltr" className="h-full" suppressHydrationWarning>
       <head>
-        {/* Prefetch de audio (evita warnings por recursos no “usados” de inmediato) */}
         <link rel="prefetch" href="/audio/plant.mp3" crossOrigin="anonymous" />
-
-        {/* No pre-cargamos /og.jpg: sólo lo usan los scrapers OG */}
-        {/* <link rel="preload" href="/og.jpg" as="image" type="image/jpeg" /> */}
-
-        {/* Color-scheme explícito para UA que no leen metadata.other */}
         <meta name="color-scheme" content="dark light" />
       </head>
       <body
@@ -98,7 +104,6 @@ export default function RootLayout({
         ].join(" ")}
         suppressHydrationWarning
       >
-        {/* ⬇️ Toda la app (AmbientAudio, GardenOverlay, etc.) queda envuelta por Providers */}
         <Providers>
           <main id="main">{children}</main>
         </Providers>
