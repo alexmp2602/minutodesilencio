@@ -26,7 +26,7 @@ const MAX_NUDGE_STEPS = 28;
 /* Hitbox */
 const HITBOX_RADIUS = 0.75;
 const HITBOX_HEIGHT = 3.0;
-const HITBOX_CENTER_FACTOR = 1.5;
+const HITBOX_CENTER_FACTOR = 2;
 
 /* Pins (perf) */
 const MAX_PINS = 8;
@@ -36,6 +36,25 @@ const CAMERA_IDLE_EPS = 0.0035;
 
 /* Helpers */
 type FlowersResponse = { flowers: Flower[] };
+
+/* Paleta de colores por tipo */
+const FLOWER_COLORS: Record<string, string[]> = {
+  rose: ["#ff4da6", "#ff66c4", "#ff3399", "#ff5cab"],
+  tulip: ["#ff8c00", "#ffb347", "#ff944d", "#ff7a1a"],
+  daisy: ["#ffe066", "#fff275", "#fff799", "#ffd54d"],
+};
+
+/* Colores de fallback si el tipo es desconocido */
+const FALLBACK_BRIGHT = ["#ff66c4", "#ffd54d", "#69a9ff", "#7cffb2"];
+
+function pickPaletteColor(f: Flower): THREE.Color {
+  if (f.color && f.color.trim()) return new THREE.Color(f.color);
+  const palette = (f.family && FLOWER_COLORS[f.family]) || FALLBACK_BRIGHT;
+  const rnd = seedFromString(f.id);
+  const hex = palette[Math.floor(rnd() * palette.length)]!;
+  // aseguramos que llegue en lineal para el material
+  return new THREE.Color(hex);
+}
 
 function seedFromString(str: string) {
   let h = 1779033703 ^ str.length;
@@ -229,10 +248,11 @@ export default function Flowers({ gardenActive = false }: Props) {
       pos = [cx, pos[1], cz];
 
       const rnd = seedFromString(f.id);
-      const scaleJitter = 0.85 + rnd() * 0.5;
+      const scaleBase = 2.35;
+      const scaleJitter = scaleBase * (0.92 + rnd() * 0.18);
 
       const colorSRGB = f.color ? new THREE.Color(f.color) : colorFromId(f.id);
-      const colorLinear = colorSRGB.clone().convertSRGBToLinear();
+      const colorLinear = pickPaletteColor(f).clone().convertSRGBToLinear();
 
       const alive = f.alive ?? !f.wilted;
       const tiltA = rnd() * Math.PI * 2;

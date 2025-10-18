@@ -27,6 +27,7 @@ import GardenOverlay from "@/components/GardenOverlay";
 import AmbientAudio from "@/components/AmbientAudio";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { MuteProvider } from "@/hooks/useMute";
+import GardenHint from "@/components/GardenHint";
 
 declare global {
   interface Window {
@@ -50,6 +51,11 @@ const easeInOut = (t: number) => {
 
 /** ✨ offset suave para “elevar” el bloque de nubes/minuto sin alejar tanto la cámara */
 const MINUTE_YOFF = 0.55;
+
+/** 🎨 Paleta */
+const INTRO_CLEAR = new THREE.Color("#1227e6"); // azul inicio (NO tocar)
+const GARDEN_CLEAR = new THREE.Color("#69a9ff"); // fondo/cielo del jardín
+const GARDEN_FOG = new THREE.Color("#8fbeff"); // niebla muy cercana al cielo
 
 /* --------- marcador pulsante --------- */
 function FocusPulse({ pos }: { pos: THREE.Vector3 }) {
@@ -92,6 +98,8 @@ function ProximitySensor({
   useFrame(() => {
     const t = controlsRef.current?.target ?? target;
     const dist = camera.position.distanceTo(t);
+    const k = clamp01((EXIT_DIST - dist) / (EXIT_DIST - ENTER_DIST));
+
     if (!activeRef.current && dist <= ENTER_DIST) {
       activeRef.current = true;
       onSetGardenActive(true);
@@ -99,6 +107,10 @@ function ProximitySensor({
       activeRef.current = false;
       onSetGardenActive(false);
     }
+
+    window.dispatchEvent(
+      new CustomEvent("ms:garden", { detail: { k, entered: k > 0 } })
+    );
   });
 
   return null;
@@ -256,16 +268,50 @@ function TimelineRig({
       target.y + idle,
       target.z
     );
+
+    // durante el descenso (fuera del jardín) dejamos que la niebla vaya
+    // abriéndose hasta FAR_END = 40, pero el color lo gestiona EnvTint.
     const f = scene.fog as THREE.Fog | null;
     if (f) {
-      const NEAR_START = 0; // antes ~10
-      const FAR_START = 0; // antes ~26
+      const NEAR_START = 0;
+      const FAR_START = 0;
       const NEAR_END = 0;
       const FAR_END = 40;
       f.near = THREE.MathUtils.lerp(NEAR_START, NEAR_END, k);
       f.far = THREE.MathUtils.lerp(FAR_START, FAR_END, k);
     }
   });
+  return null;
+}
+
+/* --------- “tinte” del entorno (fondo + color de niebla) --------- */
+function EnvTint({ inGarden }: { inGarden: boolean }) {
+  const { gl, scene } = useThree();
+  const clear = useRef(INTRO_CLEAR.clone());
+  const fogCol = useRef(INTRO_CLEAR.clone());
+
+  useEffect(() => {
+    // set inicial (evita parpadeos)
+    const c = inGarden ? GARDEN_CLEAR : INTRO_CLEAR;
+    const f = inGarden ? GARDEN_FOG : INTRO_CLEAR;
+    clear.current.copy(c);
+    fogCol.current.copy(f);
+    gl.setClearColor(clear.current, 1);
+    (scene.fog as THREE.Fog).color.copy(fogCol.current);
+  }, [gl, scene, inGarden]);
+
+  useFrame(() => {
+    const targetClear = inGarden ? GARDEN_CLEAR : INTRO_CLEAR;
+    const targetFog = inGarden ? GARDEN_FOG : INTRO_CLEAR;
+
+    // lerp suave
+    clear.current.lerp(targetClear, 0.08);
+    fogCol.current.lerp(targetFog, 0.08);
+
+    gl.setClearColor(clear.current, 1);
+    (scene.fog as THREE.Fog).color.copy(fogCol.current);
+  });
+
   return null;
 }
 
@@ -328,7 +374,6 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
   }, []);
 
   const minuteK = clamp01(minuteProgress);
-  const fogColor = useMemo(() => new THREE.Color("#eab565"), []);
 
   // scroll passthrough solo fuera del jardín
   const lastTouchY = useRef<number | null>(null);
@@ -415,13 +460,13 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       style={{ width: "100%", height: "100%" }}
       onCreated={({ gl, scene }) => {
         canvasRef.current = gl.domElement as HTMLCanvasElement;
-        gl.setClearColor("#edd0a1", 1);
+        gl.setClearColor(INTRO_CLEAR, 1); // 👈 azul de inicio
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 0.68;
         gl.shadowMap.enabled = true;
         gl.shadowMap.type = THREE.PCFSoftShadowMap;
-        scene.fog = new THREE.Fog(fogColor, 10, 26);
+        scene.fog = new THREE.Fog(INTRO_CLEAR.clone(), 10, 26); // 👈 arranca azul
       }}
       onPointerDown={(e) => {
         if (e.button === 2 || e.button === 0) setGrabbing(true);
@@ -436,6 +481,9 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       />
 
       <MuteProvider>
+        {/* 🎨 Tinte dinámico de fondo+niebla */}
+        <EnvTint inGarden={overlayVisible} />
+
         <TimelineRig minuteK={minuteK} gardenActive={overlayVisible} />
         <ProximitySensor
           onSetGardenActive={(v) => setGardenActive(v)}
@@ -449,10 +497,11 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
 
         {/* Cielo + nubes “levemente” elevadas */}
         <Sky
+          // estos valores siguen funcionando bien con los dos fondos
           sunPosition={[0, 5.5, -10]}
-          turbidity={12}
-          rayleigh={1.6}
-          mieCoefficient={0.02}
+          turbidity={overlayVisible ? 6 : 10} // 🌤️ más limpio en jardín
+          rayleigh={overlayVisible ? 2.8 : 2.0}
+          mieCoefficient={0.012}
           mieDirectionalG={0.995}
           distance={4500}
           inclination={0.47}
@@ -563,6 +612,10 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
         <Html fullscreen pointerEvents="none" zIndexRange={[50, 0]}>
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
+              <div
+                id="overlay-root"
+                style={{ position: "fixed", inset: 0, zIndex: 60 }}
+              />
               <GardenOverlay />
             </div>
           )}

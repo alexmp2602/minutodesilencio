@@ -1,41 +1,36 @@
-// src/components/TextOverlay.tsx
 "use client";
 
-import React from "react";
-import TI from "@/components/ui/TablerIcon";
+import React, { useMemo, useEffect, useState } from "react";
+import Image from "next/image";
 
-type Props = {
-  /** 0..1 progreso de la intro del cielo (anima el texto) */
-  progress: number;
-  /** Mensajes a mostrar (se auto-distribuyen en la línea de tiempo) */
-  lines?: string[];
-};
+type Props = { progress: number };
 
-/**
- * Overlay de texto puro (sin fondos). No crea scroll ni bloquea interacción.
- * Cormorant Garamond, glow leve y deslizamiento vertical suave.
- * Incluye un "scroll hint" (chevron) abajo-centro, contrastado.
- */
-export default function TextOverlay({
-  progress,
-  lines = [
-    "En memoria de lo que ya no está presente.",
-    "Esperemos un minuto de silencio.",
-  ],
-}: Props) {
-  const steps = buildWindows(lines.length, { overlap: 0.25 });
+/* ───────── helpers ───────── */
+function clamp01(v: number) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+function easeOutCubic(t: number) { const u = clamp01(t); return 1 - Math.pow(1 - u, 3); }
 
-  // Mostrar pista solo al inicio (antes de scrollear) y si no hay reduced motion
-  const [reducedMotion, setReducedMotion] = React.useState(false);
-  React.useEffect(() => {
-    const mq = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!mq) return;
-    const upd = () => setReducedMotion(mq.matches);
-    upd();
-    mq.addEventListener?.("change", upd);
-    return () => mq.removeEventListener?.("change", upd);
-  }, []);
-  const showHint = !reducedMotion && progress < 0.02; // oculto apenas se mueve
+/** breakpoint simple para móviles */
+function useIsNarrow(breakpoint = 720) {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width:${breakpoint}px)`);
+    const on = () => setNarrow(mql.matches);
+    on();
+    mql.addEventListener?.("change", on);
+    return () => mql.removeEventListener?.("change", on);
+  }, [breakpoint]);
+  return narrow;
+}
+
+export default function TextOverlay({ progress }: Props) {
+  const phase = useMemo(() => {
+    if (progress < 0.25) return "intro";
+    if (progress < 0.5) return "text";
+    if (progress < 0.75) return "loading";
+    return "done";
+  }, [progress]);
+
+  const loadK = easeOutCubic(clamp01((progress - 0.5) / 0.25));
 
   return (
     <div
@@ -43,154 +38,395 @@ export default function TextOverlay({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 2, // encima del canvas y del SkyOverlay
+        zIndex: 2,
         pointerEvents: "none",
         display: "grid",
         placeItems: "center",
       }}
     >
-      <div style={{ position: "relative", width: "min(900px, 92vw)" }}>
-        {lines.map((text, i) => {
-          const w = steps[i];
-          const k = windowed(progress, w.start, w.end); // 0..1 en su ventana
-          let o = fadeInOut(k); // 0..1 suavizado
-          let ty = lerp(18, -26, easeInOut(k));
-
-          // La primera línea aparece desde el inicio (evita “pantalla vacía”)
-          if (i === 0 && progress < 0.02) {
-            o = 1;
-            ty = 0;
-          }
-
-          return (
-            <div
-              key={i}
-              className="font-serif"
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "grid",
-                placeItems: "center",
-                fontStyle: "italic",
-                fontSize: "clamp(18px, 2.4vw, 28px)",
-                color: "var(--blue-french)",
-                textAlign: "center",
-                paddingInline: 8,
-                textShadow:
-                  "0 1px 2px rgba(0,0,0,.22), 0 0 10px rgba(255,255,255,.32)",
-                opacity: o,
-                transform: `translateY(${ty}px)`,
-                transition: "opacity .14s linear, transform .14s linear",
-                willChange: "opacity, transform",
-              }}
-            >
-              {text}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Scroll hint — abajo-centro, con más contraste */}
       <div
         style={{
-          position: "absolute",
-          left: "50%",
-          bottom: "max(18px, calc(18px + var(--sa-b)))",
-          transform: "translateX(-50%)",
-          opacity: showHint ? 1 : 0,
-          transition: "opacity .18s ease",
-          pointerEvents: "none",
+          width: "min(1100px, 92vw)",
+          display: "grid",
+          placeItems: "center",
+          gap: 24,
         }}
       >
-        <div
-          style={{
-            display: "grid",
-            placeItems: "center",
-            width: 44,
-            height: 44,
-            borderRadius: 999,
-            background: "rgba(255,255,255,0.95)",
-            border: "1px solid rgba(35,0,255,0.22)", // borde azul suave
-            boxShadow:
-              "0 10px 26px rgba(0,0,0,.22), 0 2px 8px rgba(0,0,0,.14), 0 0 0 4px rgba(255,255,255,0.35) inset",
-            backdropFilter: "blur(6px) saturate(1.02)",
-            WebkitBackdropFilter: "blur(6px) saturate(1.02)",
-            animation: showHint
-              ? "mds-float 1.6s ease-in-out infinite"
-              : "none",
-          }}
-        >
-          <TI
-            name="chev-down"
-            size={22}
-            stroke={2.25}
-            title="Deslizá hacia abajo"
-            style={{
-              color: "#2300ff", // 💙 azul de la paleta
-              filter: "drop-shadow(0 1px 0 rgba(255,255,255,.6))",
-            }}
-          />
-        </div>
+        {phase === "intro" ? (
+          <IntroScene />
+        ) : phase === "text" ? (
+          <TextBlock />
+        ) : phase === "loading" ? (
+          <LoadingBlock k={loadK} />
+        ) : (
+          <DoneBlock />
+        )}
       </div>
 
-      {/* keyframes locales */}
-      <style jsx>{`
-        @keyframes mds-float {
-          0% {
-            transform: translateY(0);
-          }
-          50% {
-            transform: translateY(7px);
-          }
-          100% {
-            transform: translateY(0);
-          }
-        }
-      `}</style>
+      {/* 👇 Solo en el frame de texto */}
+      {phase === "text" && <CandlesFixed />}
+
+      <ScrollHint visible={progress < 0.98} />
     </div>
   );
 }
 
-/** Distribuye N líneas a lo largo de la intro con un solapamiento configurable */
-function buildWindows(
-  n: number,
-  opts: { overlap?: number } = {}
-): Array<{ start: number; end: number }> {
-  const overlap = clamp01(opts.overlap ?? 0.2); // fracción de solapamiento entre ventanas
-  if (n <= 0) return [];
-  if (n === 1) return [{ start: 0.0, end: 0.8 }];
+/* ───────── INTRO ───────── */
+function IntroScene() {
+  const size = "clamp(240px, 11vw, 280px)";
+  const gap = "clamp(1px, 1vw, 1px)";
 
-  const span = 0.85; // porción útil de la intro
-  const step = span / n;
-  const ov = step * overlap;
-
-  const out: Array<{ start: number; end: number }> = [];
-  for (let i = 0; i < n; i++) {
-    const s = 0.0 + i * step - ov * 0.5;
-    const e = 0.0 + (i + 1) * step + ov * 0.5;
-    out.push({ start: clamp01(s), end: clamp01(e) });
-  }
-  return out;
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `${size} auto ${size}`,
+          alignItems: "center",
+          justifyItems: "center",
+          gap,
+          transform: "translateY(-35%)",
+        }}
+      >
+        <Image
+          src="/candle.gif"
+          alt="Vela izquierda"
+          width={180}
+          height={180}
+          priority
+          unoptimized
+          style={{
+            width: size,
+            height: "auto",
+            imageRendering: "pixelated",
+            transform: "translateX(13%) translateY(35px)",
+          }}
+        />
+        <div
+          style={{
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            transform: "translateX(2%) translateY(45px)",
+          }}
+        >
+          <div
+            className="font-mono"
+            style={{
+              fontWeight: 400,
+              fontSize: "clamp(44px, 6.4vw, 66px)",
+              color: "#ffffff",
+              letterSpacing: "0.015em",
+              marginBottom: "-0.15em",
+              lineHeight: 0.92,
+            }}
+          >
+            Bienvenido al
+          </div>
+          <div
+            className="font-script"
+            style={{
+              fontSize: "clamp(72px, 12vw, 136px)",
+              color: "#ffffff",
+              whiteSpace: "nowrap",
+              lineHeight: 0.8,
+              marginTop: "-0.1em",
+              textShadow: "0 2px 0 rgba(0,0,0,.12)",
+            }}
+          >
+            jardín digital
+          </div>
+        </div>
+        <Image
+          src="/candle.gif"
+          alt="Vela derecha"
+          width={180}
+          height={180}
+          priority
+          unoptimized
+          style={{
+            width: size,
+            height: "auto",
+            imageRendering: "pixelated",
+            transform: "translateY(35px)",
+          }}
+        />
+      </div>
+    </div>
+  );
 }
 
-// easing/helpers
-function clamp01(v: number) {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
+/* ───────── VELAS FIJAS (solo en TEXT) ───────── */
+function CandlesFixed() {
+  const src = "/candle.gif";
+  const size = "clamp(260px, 9vw, 150px)";
+  const base: React.CSSProperties = {
+    position: "fixed",
+    top: "calc(36% + 16px)",
+    transform: "translateY(-15%) translateX(10%)",
+    width: size,
+    height: "auto",
+    pointerEvents: "none",
+    imageRendering: "pixelated",
+    filter: "drop-shadow(0 1px 0 rgba(255,255,255,.25))",
+  };
+  return (
+    <>
+      <Image
+        src={src}
+        alt="Vela"
+        width={150}
+        height={150}
+        priority
+        unoptimized
+        style={{ ...base, left: "max(32px, 5vw)" }}
+      />
+      <Image
+        src={src}
+        alt="Vela"
+        width={150}
+        height={150}
+        priority
+        unoptimized
+        style={{ ...base, right: "max(32px, 5vw)" }}
+      />
+    </>
+  );
 }
-function windowed(p: number, a: number, b: number) {
-  if (b <= a) return 1;
-  return clamp01((p - a) / (b - a));
+
+/* ───────── HINT ───────── */
+function ScrollHint({ visible }: { visible: boolean }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: "50%",
+        bottom: "max(16px, calc(16px + var(--sa-b)))",
+        transform: "translateX(-50%)",
+        opacity: visible ? 1 : 0,
+        transition: "opacity .2s ease",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        className="font-mono"
+        style={{
+          fontWeight: 300,
+          fontSize: "clamp(16px, 2.2vw, 25px)",
+          letterSpacing: "0.02em",
+          color: "#ffffff",
+          opacity: 0.9,
+          textShadow: "0 1px 2px rgba(0,0,0,.18), 0 0 12px rgba(0,0,0,.12)",
+          userSelect: "none",
+          transform: "translateX(8%) translateY(-28px)",
+        }}
+      >
+        -deslizar para abajo-
+      </div>
+    </div>
+  );
 }
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
+
+/* ───────── TEXTO ───────── */
+function TextBlock() {
+  return (
+    <div
+      className="font-mono"
+      style={{
+        color: "#ffffff",
+        fontSize: "clamp(18px, 3vw, 26px)",
+        lineHeight: 1.4,
+        textAlign: "left",
+        width: "min(900px, 88vw)",
+        transform: "translateY(5%) translateX(8%)",
+      }}
+    >
+      <p style={{ margin: 0, whiteSpace: "pre-line" }}>
+        Un lugar para despedirte de lo que ya no está:
+        {"\n"}
+        personas, objetos, contraseñas, vínculos, mascotas
+      </p>
+      <p style={{ marginTop: "1em", whiteSpace: "pre-line" }}>
+        Todo lo que murió, acá puede vivir por siempre.
+        {"\n"}(o quizás… no)
+      </p>
+    </div>
+  );
 }
-function easeInOut(t: number) {
-  const u = clamp01(t);
-  return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+
+/* ───────── CARGA ───────── */
+function LoadingBlock({ k }: { k: number }) {
+  const isNarrow = useIsNarrow(720);
+  const candleSize = isNarrow ? "clamp(120px, 22vw, 160px)" : "clamp(270px, 11vw, 280px)";
+
+  return (
+    <div
+      style={{
+        width: "min(1020px, 95vw)",
+        display: "grid",
+        gridTemplateColumns: isNarrow ? "1fr" : `${candleSize} 1fr ${candleSize}`,
+        alignItems: "center",
+        justifyItems: "center",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        className="font-mono"
+        style={{
+          gridColumn: "1 / -1",
+          fontWeight: 400,
+          fontSize: "clamp(16px, 2.1vw, 29px)",
+          color: "#ffffff",
+          letterSpacing: "0.04em",
+          marginBottom: isNarrow ? "-1.2em" : "-5em",
+          textAlign: "center",
+        }}
+      >
+        CARGANDO UN MINUTO DE SILENCIO
+      </div>
+
+      <Image
+        src="/candle.gif"
+        alt=""
+        width={120}
+        height={120}
+        priority
+        unoptimized
+        style={{
+          width: candleSize,
+          height: "auto",
+          imageRendering: "pixelated",
+          transform: isNarrow ? "none" : "translateY(-20px) translateX(-25px)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div
+        style={{
+          width: isNarrow ? "100%" : "115%",
+          height: isNarrow ? "min(64px, 12vw)" : "min(80px, 7vw)",
+          border: "3px solid #ffffff",
+          background: "transparent",
+          overflow: "hidden",
+          transform: isNarrow ? "none" : "translateX(2%) translateY(20px)",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${Math.max(2, Math.floor(k * 100))}%`,
+            background: "#ffffff",
+            transition: "width .25s ease",
+          }}
+        />
+      </div>
+
+      <Image
+        src="/candle.gif"
+        alt=""
+        width={120}
+        height={120}
+        priority
+        unoptimized
+        style={{
+          width: candleSize,
+          height: "auto",
+          imageRendering: "pixelated",
+          transform: isNarrow ? "none" : "translateY(-20px) translateX(70px)",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
+  );
 }
-function fadeInOut(t: number) {
-  // entrada y salida suaves
-  const fIn = clamp01(t / 0.22);
-  const fOut = clamp01((1 - t) / 0.28);
-  return fIn * fOut;
+
+/* ───────── COMPLETADO (idéntico a CARGA en medidas/offsets) ───────── */
+function DoneBlock() {
+  const isNarrow = useIsNarrow(720);
+  const candleSize = isNarrow ? "clamp(120px, 22vw, 160px)" : "clamp(270px, 11vw, 280px)";
+
+  return (
+    <div
+      style={{
+        width: "min(1020px, 95vw)",
+        display: "grid",
+        gridTemplateColumns: isNarrow ? "1fr" : `${candleSize} 1fr ${candleSize}`,
+        alignItems: "center",
+        justifyItems: "center",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        className="font-mono"
+        style={{
+          gridColumn: "1 / -1",
+          fontWeight: 400,
+          fontSize: "clamp(16px, 2.1vw, 29px)",
+          color: "#ffffff",
+          letterSpacing: "0.04em",
+          marginBottom: isNarrow ? "-1.2em" : "-5em", // 🔁 igual que Loading
+          textAlign: "center",
+        }}
+      >
+        SILENCIO COMPLETADO
+      </div>
+
+      <Image
+        src="/candle.gif"
+        alt=""
+        width={120}
+        height={120}
+        priority
+        unoptimized
+        style={{
+          width: candleSize,
+          height: "auto",
+          imageRendering: "pixelated",
+          transform: isNarrow ? "none" : "translateY(-20px) translateX(-25px)", // 🔁 igual
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* barra llena con EXACTO ancho/alto/offset de la barra de carga */}
+      <div
+        style={{
+          width: isNarrow ? "100%" : "115%",
+          height: isNarrow ? "min(64px, 12vw)" : "min(80px, 7vw)",
+          border: "3px solid #ffffff",
+          background: "#ffffff",
+          overflow: "hidden",
+          transform: isNarrow ? "none" : "translateX(2%) translateY(20px)", // 🔁 igual
+          borderRadius: 6,
+        }}
+      />
+
+      <Image
+        src="/candle.gif"
+        alt=""
+        width={120}
+        height={120}
+        priority
+        unoptimized
+        style={{
+          width: candleSize,
+          height: "auto",
+          imageRendering: "pixelated",
+          transform: isNarrow ? "none" : "translateY(-20px) translateX(70px)", // 🔁 igual
+          pointerEvents: "none",
+        }}
+      />
+    </div>
+  );
 }

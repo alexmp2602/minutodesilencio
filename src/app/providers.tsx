@@ -10,15 +10,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <React.StrictMode>
       <SWRConfig
         value={{
-          // No forzamos fetcher global para no interferir con tu fetcher propio por recurso
           revalidateOnFocus: false,
           revalidateIfStale: true,
           revalidateOnReconnect: true,
           errorRetryCount: 2,
           errorRetryInterval: 2500,
           shouldRetryOnError: true,
-          // Sugerencia: si querés activar suspense global más adelante:
-          // suspense: true,
         }}
       >
         <MuteProvider>{children}</MuteProvider>

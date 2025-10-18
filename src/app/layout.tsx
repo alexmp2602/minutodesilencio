@@ -1,45 +1,43 @@
 // src/app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { Open_Sans, Lekton, Cormorant_Garamond } from "next/font/google";
 import Providers from "./providers";
 
-const openSans = Open_Sans({
+import { DM_Mono } from "next/font/google";
+import localFont from "next/font/local";
+
+const dmMono = DM_Mono({
   subsets: ["latin"],
+  weight: ["300", "400", "500"],
   display: "swap",
-  variable: "--font-ui",
+  variable: "--font-mono",
 });
-const lekton = Lekton({
-  subsets: ["latin"],
-  weight: ["400", "700"],
+
+const edwardian = localFont({
+  src: "/fonts/edwardianscriptitc.ttf",
+  weight: "400",
+  style: "normal",
   display: "swap",
-  variable: "--font-lekton",
-});
-const cormorant = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  style: ["normal", "italic"],
-  display: "swap",
-  variable: "--font-serif",
+  variable: "--font-script",
 });
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#0b0d10",
+  themeColor: "#1227e6", // azul primario
 };
 
 const siteUrl = "https://minutodesilencio.vercel.app";
 const siteName = "Minuto de Silencio";
-const ogImage = "/minutodesilencio.png";
+const ogImage = "/minutodesilencio.png"; // asegurate que exista en /public
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: siteName,
   title: { default: siteName, template: "%s · Minuto de Silencio" },
   description:
-    "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
+    "Un ritual interactivo y un jardín 3D. Hecho con Next.js, R3F y Supabase.",
   alternates: { canonical: siteUrl + "/" },
   other: { "color-scheme": "dark light" },
 
@@ -54,7 +52,7 @@ export const metadata: Metadata = {
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
     other: [
-      { rel: "mask-icon", url: "/safari-pinned-tab.svg", color: "#0b0d10" },
+      { rel: "mask-icon", url: "/safari-pinned-tab.svg", color: "#1227e6" },
     ],
   },
 
@@ -70,7 +68,7 @@ export const metadata: Metadata = {
     siteName,
     title: siteName,
     description:
-      "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
+      "Un ritual interactivo y un jardín 3D. Hecho con Next.js, R3F y Supabase.",
     images: [{ url: ogImage, alt: siteName }],
     locale: "es_AR",
   },
@@ -79,7 +77,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteName,
     description:
-      "Un ritual interactivo de 60 segundos y un jardín 3D hecho con Next.js, R3F y Supabase.",
+      "Un ritual interactivo y un jardín 3D. Hecho con Next.js, R3F y Supabase.",
     images: [ogImage],
   },
 };
@@ -94,12 +92,12 @@ export default function RootLayout({
       <head>
         <link rel="prefetch" href="/audio/plant.mp3" crossOrigin="anonymous" />
         <meta name="color-scheme" content="dark light" />
+        {/* <link rel="preload" href="/fonts/edwardianscriptitc.ttf" as="font" type="font/woff2" crossOrigin="anonymous" /> */}
       </head>
       <body
         className={[
-          openSans.variable,
-          lekton.variable,
-          cormorant.variable,
+          dmMono.variable,
+          edwardian.variable,
           "antialiased h-full",
         ].join(" ")}
         suppressHydrationWarning

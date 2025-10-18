@@ -132,8 +132,7 @@ export default function GardenOverlay() {
   const [portalEl, setPortalEl] = React.useState<Element | null>(null);
 
   React.useEffect(() => {
-    setMounted(true);
-    setPortalEl(document.getElementById("overlay-root") ?? document.body);
+    setPortalEl(document.body);
   }, []);
 
   const flowers = React.useMemo(() => data?.flowers ?? [], [data]);
@@ -362,31 +361,85 @@ export default function GardenOverlay() {
 
   /* ---------------- UI ---------------- */
   const ui = (
-    <div className="ms-garden-overlay" aria-live="polite">
+    <div
+      className="ms-garden-overlay"
+      aria-live="polite"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 70,
+        pointerEvents: "none", // la UI interna vuelve a habilitar eventos
+      }}
+    >
+      {/* chip: arriba-izquierda */}
       <div
         className="counter-chip"
         role="status"
         aria-live="polite"
         title="Cantidad total de flores"
         style={{
+          position: "fixed",
+          top: 12,
+          left: 12,
           color: "var(--blue-french, #365ec7)",
           background: "var(--panel-chip-bg, rgba(255,255,255,.22))",
           border: "1px solid var(--panel-chip-border, rgba(255,255,255,.45))",
           boxShadow:
             "0 3px 12px rgba(0,0,0,.18), inset 0 0 8px rgba(255,255,255,.15)",
           backdropFilter: "blur(6px)",
+          borderRadius: 16,
+          padding: "6px 12px",
+          fontSize: 14,
+          pointerEvents: "auto",
         }}
       >
         Últimas flores: <strong>{isLoading ? "…" : total}</strong>
       </div>
 
-      <form className="plant-bar" onSubmit={onSubmit} aria-busy={pending}>
-        <div className="plant-header">
-          <div className="panel-title">
-            {myLastFromApi ? "Tu flor" : "Plantar una flor"}
+      {/* barra: abajo, centrada */}
+      <form
+        className="plant-bar"
+        onSubmit={onSubmit}
+        aria-busy={pending}
+        style={{
+          position: "fixed",
+          left: "50%",
+          transform: "translateX(-50%)",
+          bottom: "max(16px, calc(16px + var(--sa-b, 0px)))",
+          width: "min(1100px, 92vw)",
+          pointerEvents: "auto",
+          background: "rgba(255,255,255,.92)",
+          borderRadius: 18,
+          boxShadow:
+            "0 10px 30px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.35)",
+          padding: 16,
+        }}
+      >
+        <div
+          className="plant-header"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <div
+            className="panel-title font-mono"
+            style={{
+              fontWeight: 400,
+              fontSize: "clamp(18px, 2.1vw, 22px)",
+              letterSpacing: "0.01em",
+              lineHeight: 1.25,
+              color: "var(--blue-french, #365ec7)",
+            }}
+          >
+            Cada flor es una despedida. Dejá tu mensaje.
           </div>
 
-          <div className="header-actions">
+          <div className="header-actions" style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
               className="icon-btn"
@@ -409,7 +462,15 @@ export default function GardenOverlay() {
           </div>
         </div>
 
-        <div className="plant-row">
+        <div
+          className="plant-row"
+          style={{
+            display: "grid",
+            gridTemplateColumns: myLastFromApi ? "1fr auto" : "1fr auto auto",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
           <label htmlFor="plant-msg" className="sr-only">
             Mensaje (opcional, 140 máx.)
           </label>
@@ -430,6 +491,13 @@ export default function GardenOverlay() {
             className="input"
             autoComplete="off"
             disabled={pending}
+            style={{
+              width: "100%",
+              height: 44,
+              borderRadius: 12,
+              border: "1px solid rgba(0,0,0,.08)",
+              padding: "0 12px",
+            }}
           />
 
           {!myLastFromApi && (
@@ -437,6 +505,7 @@ export default function GardenOverlay() {
               className="picker"
               aria-label="Elegir tipo de flor"
               role="group"
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
             >
               <button
                 type="button"
@@ -479,6 +548,14 @@ export default function GardenOverlay() {
             className="btn-cta"
             aria-disabled={pending}
             disabled={pending}
+            style={{
+              height: 44,
+              borderRadius: 12,
+              padding: "0 16px",
+              background: "var(--blue-ui, #2340ff)",
+              color: "#fff",
+              fontWeight: 700,
+            }}
           >
             {pending
               ? myLastFromApi
@@ -504,6 +581,6 @@ export default function GardenOverlay() {
     </div>
   );
 
-  if (!mounted || !portalEl) return null;
+  if (!portalEl) return null;
   return createPortal(ui, portalEl);
 }
