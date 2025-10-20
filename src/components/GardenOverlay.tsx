@@ -128,7 +128,6 @@ export default function GardenOverlay() {
   const [pending, setPending] = React.useState(false);
   const [msg, setMsg] = React.useState("");
   const [errMsg, setErrMsg] = React.useState<string | null>(null);
-  const [mounted, setMounted] = React.useState(false);
   const [portalEl, setPortalEl] = React.useState<Element | null>(null);
 
   React.useEffect(() => {

@@ -70,27 +70,6 @@ function seedFromString(str: string) {
   };
 }
 
-function colorFromId(id: string) {
-  const rnd = seedFromString(id);
-  const h = rnd();
-  const s = 0.5 + rnd() * 0.35;
-  const v = 0.9;
-  const c = v * s;
-  const x = c * (1 - Math.abs(((h * 6) % 2) - 1));
-  let r = 0,
-    g = 0,
-    b = 0;
-  const seg = Math.floor(h * 6);
-  if (seg === 0) [r, g, b] = [c, x, 0];
-  else if (seg === 1) [r, g, b] = [x, c, 0];
-  else if (seg === 2) [r, g, b] = [0, c, x];
-  else if (seg === 3) [r, g, b] = [0, x, c];
-  else if (seg === 4) [r, g, b] = [x, 0, c];
-  else [r, g, b] = [c, 0, x];
-  const m = v - c;
-  return new THREE.Color(r + m, g + m, b + m);
-}
-
 function positionFor(f: Flower): [number, number, number] {
   if (
     typeof f.x === "number" &&
@@ -251,7 +230,6 @@ export default function Flowers({ gardenActive = false }: Props) {
       const scaleBase = 2.35;
       const scaleJitter = scaleBase * (0.92 + rnd() * 0.18);
 
-      const colorSRGB = f.color ? new THREE.Color(f.color) : colorFromId(f.id);
       const colorLinear = pickPaletteColor(f).clone().convertSRGBToLinear();
 
       const alive = f.alive ?? !f.wilted;
