@@ -38,6 +38,7 @@ declare global {
       update?: () => void;
       setEnabled?: (enabled: boolean) => void;
     };
+    __orbitDragging?: boolean;
   }
 }
 
@@ -269,8 +270,6 @@ function TimelineRig({
       target.z
     );
 
-    // durante el descenso (fuera del jardín) dejamos que la niebla vaya
-    // abriéndose hasta FAR_END = 40, pero el color lo gestiona EnvTint.
     const f = scene.fog as THREE.Fog | null;
     if (f) {
       const NEAR_START = 0;
@@ -291,7 +290,6 @@ function EnvTint({ inGarden }: { inGarden: boolean }) {
   const fogCol = useRef(INTRO_CLEAR.clone());
 
   useEffect(() => {
-    // set inicial (evita parpadeos)
     const c = inGarden ? GARDEN_CLEAR : INTRO_CLEAR;
     const f = inGarden ? GARDEN_FOG : INTRO_CLEAR;
     clear.current.copy(c);
@@ -304,7 +302,6 @@ function EnvTint({ inGarden }: { inGarden: boolean }) {
     const targetClear = inGarden ? GARDEN_CLEAR : INTRO_CLEAR;
     const targetFog = inGarden ? GARDEN_FOG : INTRO_CLEAR;
 
-    // lerp suave
     clear.current.lerp(targetClear, 0.08);
     fogCol.current.lerp(targetFog, 0.08);
 
@@ -351,6 +348,16 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
   const [gardenActive, setGardenActive] = useState(false);
   const [forceEntered, setForceEntered] = useState(false);
   const [myFlowerPos, setMyFlowerPos] = useState<THREE.Vector3 | null>(null);
+
+  // 👇 para re-montar el hint cada vez que se entra al jardín
+  const [hintEpoch, setHintEpoch] = useState(0);
+  const wasActiveRef = useRef(false);
+  useEffect(() => {
+    if (gardenActive && !wasActiveRef.current) {
+      setHintEpoch((e) => e + 1);
+    }
+    wasActiveRef.current = gardenActive;
+  }, [gardenActive]);
 
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -497,9 +504,8 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
 
         {/* Cielo + nubes “levemente” elevadas */}
         <Sky
-          // estos valores siguen funcionando bien con los dos fondos
           sunPosition={[0, 5.5, -10]}
-          turbidity={overlayVisible ? 6 : 10} // 🌤️ más limpio en jardín
+          turbidity={overlayVisible ? 6 : 10}
           rayleigh={overlayVisible ? 2.8 : 2.0}
           mieCoefficient={0.012}
           mieDirectionalG={0.995}
@@ -580,16 +586,8 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
             minDistance={3.2}
             maxDistance={120}
             zoomSpeed={reducedMotion ? 0.7 : 1.0}
-            onStart={() =>
-              ((
-                window as Window & { __orbitDragging?: boolean }
-              ).__orbitDragging = true)
-            }
-            onEnd={() =>
-              ((
-                window as Window & { __orbitDragging?: boolean }
-              ).__orbitDragging = false)
-            }
+            onStart={() => (window.__orbitDragging = true)}
+            onEnd={() => (window.__orbitDragging = false)}
             onChange={(e) => {
               const c = e?.target as OrbitControlsImpl | undefined;
               if (!c) return;
@@ -602,6 +600,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
 
         <PublishGlobals controlsRef={controlsRef} />
 
+        {/* audio ambiental cuando el overlay es visible */}
         <Html style={{ pointerEvents: "none" }}>
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
@@ -609,6 +608,8 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
             </div>
           )}
         </Html>
+
+        {/* UI 2D sobre la escena */}
         <Html fullscreen pointerEvents="none" zIndexRange={[50, 0]}>
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
@@ -616,6 +617,8 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
                 id="overlay-root"
                 style={{ position: "fixed", inset: 0, zIndex: 60 }}
               />
+              {/* 👇 Hint SOLO dentro del jardín y re-montado en cada entrada */}
+              {gardenActive && <GardenHint key={hintEpoch} seconds={3.2} />}
               <GardenOverlay />
             </div>
           )}
