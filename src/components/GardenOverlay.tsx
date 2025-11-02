@@ -1,3 +1,4 @@
+// src/components/GardenOverlay.tsx
 "use client";
 
 import * as React from "react";
@@ -9,6 +10,7 @@ import TI from "@/components/ui/TablerIcon";
 import { useMuteStore } from "@/state/muteStore";
 import useSfx from "@/hooks/useSfx";
 
+/* --------------------------------- Types --------------------------------- */
 type FlowersResponse = { flowers: Flower[] };
 const VARIANTS = ["rose", "tulip", "daisy"] as const;
 type Variant = (typeof VARIANTS)[number];
@@ -16,7 +18,11 @@ type Variant = (typeof VARIANTS)[number];
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null;
 
-/* ---------- UUID seguro ---------- */
+/* --------------------------------- Utils --------------------------------- */
+const clamp = (n: number, a = 0, b = 99) => Math.max(a, Math.min(b, n));
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/* ----------------------------- UUID seguro ----------------------------- */
 function safeUUID(): string {
   try {
     if (
@@ -48,7 +54,7 @@ function safeUUID(): string {
   });
 }
 
-/* ---------- identidad local ---------- */
+/* --------------------------- Identidad local --------------------------- */
 function getUserId(): string {
   if (typeof window === "undefined") return "anon";
   const KEY = "ms:userId";
@@ -73,7 +79,7 @@ function getUserName(): string | null {
   }
 }
 
-/* ---------- persistencia local ---------- */
+/* -------------------------- Persistencia local -------------------------- */
 type LastFlower = { x: number; y: number; z: number; id?: string };
 const LAST_KEY = "ms:lastFlower";
 function saveLastFlower(pos: LastFlower) {
@@ -98,7 +104,7 @@ function readLastFlower(): LastFlower | null {
   return null;
 }
 
-/** Espera a que la escena elija una posición y complete el vuelo. */
+/* --------------------------- Comunicación 3D --------------------------- */
 function askSceneForPlantPosition(): Promise<
   readonly [number, number, number]
 > {
@@ -115,24 +121,19 @@ function askSceneForPlantPosition(): Promise<
   });
 }
 
+/* ======================================================================= */
 export default function GardenOverlay() {
   const { data, isLoading, error, mutate } = useSWR<FlowersResponse>(
     "/api/flowers",
     fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-    }
+    { revalidateOnFocus: false, revalidateOnReconnect: true }
   );
 
   const [pending, setPending] = React.useState(false);
   const [msg, setMsg] = React.useState("");
   const [errMsg, setErrMsg] = React.useState<string | null>(null);
   const [portalEl, setPortalEl] = React.useState<Element | null>(null);
-
-  React.useEffect(() => {
-    setPortalEl(document.body);
-  }, []);
+  React.useEffect(() => setPortalEl(document.body), []);
 
   const flowers = React.useMemo(() => data?.flowers ?? [], [data]);
   const total = flowers.length;
@@ -170,6 +171,83 @@ export default function GardenOverlay() {
     [myLastFromApi, myLastFromLocal]
   );
 
+  /* ---------------- Progreso “matar flores” (barra vertical) ---------------- */
+  const [progress, setProgress] = React.useState(0); // 0..99
+  const targetRef = React.useRef(0);
+
+  // Knobs
+  const KILL_INCREMENT = 7; // fallback si no llega percent
+  const DECAY_PER_SEC = 1.2; // baja suave (loop)
+  const EASE = 0.12; // easing de la UI
+
+  // Helper de test (opcional)
+  React.useEffect(() => {
+    (window as Window & { msTestKill?: () => void }).msTestKill = () =>
+      window.dispatchEvent(new CustomEvent("ms:flower:killed"));
+  }, []);
+
+  // Escuchar progreso desde la escena (preferido)
+  React.useEffect(() => {
+    const onProgress = (e: Event) => {
+      const de = e as CustomEvent<{ percent?: number }>;
+      const p = de?.detail?.percent;
+      if (typeof p === "number" && isFinite(p)) {
+        targetRef.current = clamp(Math.floor(p * 100));
+      }
+    };
+
+    // Compat: si solo llega el kill/regrow
+    const onKill = () => {
+      targetRef.current = clamp(targetRef.current + KILL_INCREMENT);
+    };
+    const onRegrow = () => {
+      targetRef.current = clamp(targetRef.current - 6);
+    };
+
+    window.addEventListener("ms:flowers:progress", onProgress as EventListener);
+    window.addEventListener("ms:flowers:kill", onKill as EventListener);
+    window.addEventListener("ms:flower:killed", onKill as EventListener);
+    window.addEventListener("ms:flower:regrow", onRegrow as EventListener);
+
+    return () => {
+      window.removeEventListener(
+        "ms:flowers:progress",
+        onProgress as EventListener
+      );
+      window.removeEventListener("ms:flowers:kill", onKill as EventListener);
+      window.removeEventListener("ms:flower:killed", onKill as EventListener);
+      window.removeEventListener("ms:flower:regrow", onRegrow as EventListener);
+    };
+  }, []);
+
+  // Decaimiento natural (las flores vuelven)
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      targetRef.current = clamp(targetRef.current - DECAY_PER_SEC);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Easing hacia el target
+  React.useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      setProgress((p) => {
+        const next = lerp(p, targetRef.current, EASE);
+        if (Math.abs(next - targetRef.current) < 0.05) return targetRef.current;
+        return next;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const pct = Math.floor(progress);
+  const RAIL_W = 36;
+  const RAIL_H = 156;
+  const RAIL_RADIUS = 12;
+
   /* ---------------- Navegar hasta mi flor ---------------- */
   type OrbitControlsLike = {
     target: { set: (x: number, y: number, z: number) => void };
@@ -187,7 +265,7 @@ export default function GardenOverlay() {
     }
   }, [myLastFlower]);
 
-  /* ---------------- Crear flor ---------------- */
+  /* ---------------- Crear / actualizar flor ---------------- */
   async function createFlower(message: string) {
     setErrMsg(null);
     setPending(true);
@@ -269,7 +347,6 @@ export default function GardenOverlay() {
     }
   }
 
-  /* ---------------- Actualizar mensaje ---------------- */
   async function updateMyFlower(messageFromUI: string) {
     if (!myLastFromApi?.id) {
       await mutate();
@@ -291,48 +368,19 @@ export default function GardenOverlay() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: payload.message }),
       });
-
-      let json: unknown = null;
-      try {
-        json = await res.json();
-      } catch {}
-
-      if (!res.ok) {
-        const apiError =
-          typeof json === "object" &&
-          json &&
-          "error" in (json as Record<string, unknown>) &&
-          typeof (json as Record<string, unknown>).error === "string"
-            ? ((json as Record<string, unknown>).error as string)
-            : `HTTP ${res.status}`;
-        throw new Error(apiError);
-      }
-
-      await mutate(
-        (current?: FlowersResponse) => {
-          const prev = current?.flowers ?? [];
-          const next = prev.map((f) =>
-            f.id === myLastFromApi!.id ? { ...f, message: payload.message } : f
-          );
-          return { flowers: next };
-        },
-        { revalidate: true }
-      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await mutate((current?: FlowersResponse) => {
+        const prev = current?.flowers ?? [];
+        const next = prev.map((f) =>
+          f.id === myLastFromApi!.id ? { ...f, message: payload.message } : f
+        );
+        return { flowers: next };
+      });
     } catch (e: unknown) {
-      await mutate(
-        (current?: FlowersResponse) => {
-          const prev = current?.flowers ?? [];
-          const next = prev.map((f) =>
-            f.id === myLastFromApi!.id ? { ...f, message: payload.message } : f
-          );
-          return { flowers: next };
-        },
-        { revalidate: true }
-      );
       setErrMsg(
         e instanceof Error
-          ? `No se pudo guardar en el servidor (${e.message}). El cambio se ve localmente.`
-          : "No se pudo guardar en el servidor. El cambio se ve localmente."
+          ? `No se pudo guardar en el servidor (${e.message}).`
+          : "No se pudo guardar en el servidor."
       );
     } finally {
       setPending(false);
@@ -358,6 +406,30 @@ export default function GardenOverlay() {
     }
   };
 
+  /* ---------------- Mensajitos flotantes ---------------- */
+  const TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
+  const [floaties, setFloaties] = React.useState<
+    { id: number; text: string; left: number }[]
+  >([]);
+  const nextId = React.useRef(1);
+  const tagIdx = React.useRef(0);
+
+  React.useEffect(() => {
+    const onKill = () => {
+      const id = nextId.current++;
+      const text = TAGS[tagIdx.current++ % TAGS.length];
+      const left = 24 + Math.random() * 260; // posición horizontal
+      setFloaties((arr) => [...arr, { id, text, left }]);
+      setTimeout(
+        () => setFloaties((arr) => arr.filter((f) => f.id !== id)),
+        1600
+      );
+    };
+    window.addEventListener("ms:flowers:kill", onKill as EventListener);
+    return () =>
+      window.removeEventListener("ms:flowers:kill", onKill as EventListener);
+  });
+
   /* ---------------- UI ---------------- */
   const ui = (
     <div
@@ -367,10 +439,82 @@ export default function GardenOverlay() {
         position: "fixed",
         inset: 0,
         zIndex: 70,
-        pointerEvents: "none", // la UI interna vuelve a habilitar eventos
+        pointerEvents: "none",
       }}
     >
-      {/* chip: arriba-izquierda */}
+      {/* Anim para floaties */}
+      <style>{`
+      @keyframes ms-float-up {
+        0%   { transform: translateY(0px);   opacity: 0; }
+        10%  { opacity: 1; }
+        100% { transform: translateY(-52px); opacity: 0; }
+      }
+      `}</style>
+
+      {/* 🟩 Barra vertical (loop progreso) */}
+      <div
+        aria-label="Progreso de destrucción de flores"
+        role="status"
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: 20,
+          transform: "translateY(-50%)",
+          width: RAIL_W,
+          height: RAIL_H,
+          pointerEvents: "auto",
+          borderRadius: RAIL_RADIUS,
+          backdropFilter: "blur(8px)",
+          background: "rgba(0,0,0,.25)",
+          boxShadow:
+            "0 6px 18px rgba(0,0,0,.18), inset 0 0 8px rgba(255,255,255,.12)",
+          display: "grid",
+          gridTemplateRows: "1fr auto",
+          padding: 6,
+        }}
+        title="Nunca llega a 100%: crecen de nuevo"
+      >
+        <div
+          style={{
+            position: "relative",
+            alignSelf: "stretch",
+            width: "100%",
+            borderRadius: RAIL_RADIUS - 4,
+            overflow: "hidden",
+            background: "rgba(255,255,255,.06)",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              width: "100%",
+              height: `${Math.max(1, (pct / 100) * 100)}%`,
+              borderRadius: RAIL_RADIUS - 4,
+              transition: "height .25s ease",
+              background: "linear-gradient(to top, #58c48d, #b5e8c8)",
+              boxShadow: "inset 0 0 12px rgba(0,0,0,.12)",
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            marginTop: 6,
+            textAlign: "center",
+            fontWeight: 800,
+            fontSize: 13,
+            color: "var(--text-strong, #2b3b46)",
+            textShadow: "0 1px 0 rgba(255,255,255,.6)",
+            userSelect: "none",
+          }}
+        >
+          {pct}%
+        </div>
+      </div>
+
+      {/* 🔹 Chip superior */}
       <div
         className="counter-chip"
         role="status"
@@ -379,14 +523,14 @@ export default function GardenOverlay() {
         style={{
           position: "fixed",
           top: 12,
-          left: 12,
-          color: "var(--blue-french, #365ec7)",
-          background: "var(--panel-chip-bg, rgba(255,255,255,.22))",
-          border: "1px solid var(--panel-chip-border, rgba(255,255,255,.45))",
+          left: 20 + RAIL_W + 12,
+          color: "#fff",
+          background: "rgba(0,0,0,.25)",
+          border: "1px solid rgba(255,255,255,.2)",
           boxShadow:
-            "0 3px 12px rgba(0,0,0,.18), inset 0 0 8px rgba(255,255,255,.15)",
+            "0 3px 12px rgba(0,0,0,.18), inset 0 0 8px rgba(255,255,255,.1)",
           backdropFilter: "blur(6px)",
-          borderRadius: 16,
+          borderRadius: 10,
           padding: "6px 12px",
           fontSize: 14,
           pointerEvents: "auto",
@@ -395,7 +539,7 @@ export default function GardenOverlay() {
         Últimas flores: <strong>{isLoading ? "…" : total}</strong>
       </div>
 
-      {/* barra: abajo, centrada */}
+      {/* 🔸 Barra inferior (formulario existente) */}
       <form
         className="plant-bar"
         onSubmit={onSubmit}
@@ -407,10 +551,10 @@ export default function GardenOverlay() {
           bottom: "max(16px, calc(16px + var(--sa-b, 0px)))",
           width: "min(1100px, 92vw)",
           pointerEvents: "auto",
-          background: "rgba(255,255,255,.92)",
-          borderRadius: 18,
-          boxShadow:
-            "0 10px 30px rgba(0,0,0,.22), inset 0 0 0 1px rgba(255,255,255,.35)",
+          background: "rgba(255,255,245,.85)",
+          borderRadius: 16,
+          boxShadow: "0 6px 24px rgba(0,0,0,.15)",
+          backdropFilter: "blur(10px)",
           padding: 16,
         }}
       >
@@ -432,7 +576,7 @@ export default function GardenOverlay() {
               fontSize: "clamp(18px, 2.1vw, 22px)",
               letterSpacing: "0.01em",
               lineHeight: 1.25,
-              color: "var(--blue-french, #365ec7)",
+              color: "#2b3b46",
             }}
           >
             Cada flor es una despedida. Dejá tu mensaje.
@@ -551,9 +695,10 @@ export default function GardenOverlay() {
               height: 44,
               borderRadius: 12,
               padding: "0 16px",
-              background: "var(--blue-ui, #2340ff)",
+              background: "#2e6461",
               color: "#fff",
               fontWeight: 700,
+              transition: "background .2s ease",
             }}
           >
             {pending
@@ -577,6 +722,26 @@ export default function GardenOverlay() {
           </div>
         )}
       </form>
+
+      {/* Mensajes flotantes */}
+      {floaties.map((f) => (
+        <div
+          key={f.id}
+          style={{
+            position: "fixed",
+            bottom: 200,
+            left: f.left,
+            fontWeight: 700,
+            fontSize: 14,
+            color: "rgba(255,255,255,.95)",
+            textShadow: "0 1px 10px rgba(0,0,0,.4)",
+            pointerEvents: "none",
+            animation: "ms-float-up 1.6s ease-out forwards",
+          }}
+        >
+          {f.text}
+        </div>
+      ))}
     </div>
   );
 

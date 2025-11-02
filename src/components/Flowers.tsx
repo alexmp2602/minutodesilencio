@@ -1,144 +1,44 @@
-// src/components/Flowers.tsx
 "use client";
 
 import * as THREE from "three";
-import { useMemo, useState, useRef, useLayoutEffect, useEffect } from "react";
-import useSWR from "swr";
-import type { Flower } from "@/lib/types";
-import { fetcher } from "@/lib/fetcher";
-import {
-  Instances,
-  Instance,
-  useCursor,
-  useGLTF,
-  Html,
-} from "@react-three/drei";
-import { ThreeEvent, useFrame, useThree } from "@react-three/fiber";
+import { useMemo, useRef, useState, useEffect } from "react";
+import { Instances, Instance, useGLTF } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-/* ===== Config ===== */
-const CAP = 640;
+/** ===== Config ===== */
 const MODEL_URL = "/models/flower.glb";
-const GARDEN_RADIUS = 60; // ⬅ radio del jardín circular
-const MIN_SEPARATION = 0.85;
-const MAX_NUDGE_STEPS = 28;
-
-/* Hitbox */
+const GARDEN_RADIUS = 60;
+const MAX_FLOWERS = 140;
+const TARGET_ALIVE = 90;
+const SPAWN_EVERY = 0.6;
+const RESPAWN_MIN = 6;
+const RESPAWN_MAX = 12;
+const MIN_SEPARATION = 1.0;
 const HITBOX_RADIUS = 0.75;
-const HITBOX_HEIGHT = 3.0;
-const HITBOX_CENTER_FACTOR = 2;
+const HITBOX_HEIGHT = 2.6;
 
-/* Pins (perf) */
-const MAX_PINS = 8;
-const PIN_MAX_DIST = 18;
-const PIN_RECALC_MS = 250;
-const CAMERA_IDLE_EPS = 0.0035;
+/** ===== Colores (lineales) ===== */
+const STEM_COLOR = new THREE.Color("#036200");
+const PETAL_COLOR = new THREE.Color("#FBDDF5");
+const ANTHER_COLOR = PETAL_COLOR.clone();
 
-/* Helpers */
-type FlowersResponse = { flowers: Flower[] };
-
-/* Paleta de colores por tipo */
-const FLOWER_COLORS: Record<string, string[]> = {
-  rose: ["#ff4da6", "#ff66c4", "#ff3399", "#ff5cab"],
-  tulip: ["#ff8c00", "#ffb347", "#ff944d", "#ff7a1a"],
-  daisy: ["#ffe066", "#fff275", "#fff799", "#ffd54d"],
-};
-
-/* Colores de fallback si el tipo es desconocido */
-const FALLBACK_BRIGHT = ["#ff66c4", "#ffd54d", "#69a9ff", "#7cffb2"];
-
-function pickPaletteColor(f: Flower): THREE.Color {
-  if (f.color && f.color.trim()) return new THREE.Color(f.color);
-  const palette = (f.family && FLOWER_COLORS[f.family]) || FALLBACK_BRIGHT;
-  const rnd = seedFromString(f.id);
-  const hex = palette[Math.floor(rnd() * palette.length)]!;
-  // aseguramos que llegue en lineal para el material
-  return new THREE.Color(hex);
-}
-
-function seedFromString(str: string) {
-  let h = 1779033703 ^ str.length;
-  for (let i = 0; i < str.length; i++) {
-    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
-    h = (h << 13) | (h >>> 19);
-  }
-  return () => {
-    h = Math.imul(h ^ (h >>> 16), 2246822507);
-    h = Math.imul(h ^ (h >>> 13), 3266489909);
-    const t = (h ^= h >>> 16) >>> 0;
-    return (t & 0xffff) / 0xffff;
-  };
-}
-
-function positionFor(f: Flower): [number, number, number] {
-  if (
-    typeof f.x === "number" &&
-    typeof f.y === "number" &&
-    typeof f.z === "number"
-  ) {
-    return [f.x, Math.max(0, f.y), f.z];
-  }
-  const rnd = seedFromString(f.id);
-  const r = 3 + rnd() * 9;
-  const a = rnd() * Math.PI * 2;
-  return [Math.cos(a) * r, 0, Math.sin(a) * r];
-}
-
-function clampToDisk(x: number, z: number, r: number) {
-  const d2 = x * x + z * z;
-  const r2 = r * r;
-  if (d2 <= r2) return [x, z] as const;
-  const d = Math.sqrt(d2);
-  return [(x / d) * r * 0.98, (z / d) * r * 0.98] as const; // 2% margen interior
-}
-
-function getUserId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("ms:userId");
-}
-
-function gridKey(x: number, z: number, cell = MIN_SEPARATION * 0.75) {
-  const gx = Math.floor(x / cell);
-  const gz = Math.floor(z / cell);
-  return `${gx}:${gz}`;
-}
-
-function resolveNonOverlappingPosition(
-  base: [number, number, number],
-  taken: Set<string>,
-  id: string
-): [number, number, number] {
-  const [bx, by, bz] = base;
-  const cell = MIN_SEPARATION * 0.75;
-  const startKey = gridKey(bx, bz, cell);
-  if (!taken.has(startKey)) {
-    taken.add(startKey);
-    return [bx, by, bz];
-  }
-
-  const rnd = seedFromString(id);
-  const angle0 = rnd() * Math.PI * 2;
-  let radius = MIN_SEPARATION * 0.5;
-  for (let i = 0; i < MAX_NUDGE_STEPS; i++) {
-    const angle = angle0 + i * 0.85;
-    const x = bx + Math.cos(angle) * radius;
-    const z = bz + Math.sin(angle) * radius;
-    const key = gridKey(x, z, cell);
-    if (!taken.has(key)) {
-      taken.add(key);
-      return [x, by, z];
-    }
-    radius += 0.18 + rnd() * 0.07;
-  }
-  return [bx, by, bz];
-}
-
-/* GLB → geometry única */
+/** ===== GLB merge en una sola geometry ===== */
 type GLBData = {
   geom: THREE.BufferGeometry | null;
   baseScale: number;
   loaded: boolean;
 };
+
+function ensureColorAttribute(g: THREE.BufferGeometry) {
+  if (!g.getAttribute("color")) {
+    const count = g.getAttribute("position")?.count ?? 0;
+    const arr = new Float32Array(count * 3);
+    for (let i = 0; i < count * 3; i++) arr[i] = 1;
+    g.setAttribute("color", new THREE.BufferAttribute(arr, 3, true));
+  }
+  return g;
+}
 
 function useMergedFlowerGLB(url = MODEL_URL): GLBData {
   const gltf: import("three-stdlib").GLTF | null = useGLTF(url);
@@ -148,21 +48,18 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
     const parts: THREE.BufferGeometry[] = [];
     gltf.scene.updateMatrixWorld(true);
     gltf.scene.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.geometry) return;
-
-        const g = mesh.geometry.clone();
-        g.applyMatrix4(mesh.matrixWorld);
-        (g as THREE.BufferGeometry).morphAttributes = {} as Record<
-          string,
-          unknown
-        >;
-        g.deleteAttribute("skinIndex");
-        g.deleteAttribute("skinWeight");
-
-        parts.push(g);
-      }
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      const g = mesh.geometry.clone();
+      g.applyMatrix4(mesh.matrixWorld);
+      (g as THREE.BufferGeometry).morphAttributes = {} as Record<
+        string,
+        THREE.BufferAttribute[]
+      >;
+      g.deleteAttribute("skinIndex");
+      g.deleteAttribute("skinWeight");
+      ensureColorAttribute(g);
+      parts.push(g);
     });
 
     const merged =
@@ -170,271 +67,442 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
     if (!merged) return { geom: null, baseScale: 1, loaded: false };
 
     merged.computeBoundingBox();
-    const size = new THREE.Vector3();
-    merged.boundingBox!.getSize(size);
-    if (size.y < size.z && size.z >= size.x) merged.rotateX(Math.PI / 2);
-    else if (size.y < size.x && size.x >= size.z) merged.rotateZ(-Math.PI / 2);
-
-    merged.rotateY(Math.PI);
-
-    merged.computeBoundingBox();
     const bb = merged.boundingBox!;
     const height = Math.max(0.0001, bb.max.y - bb.min.y);
     merged.translate(0, -bb.min.y, 0);
+    merged.computeBoundingBox();
+    const maxY = merged.boundingBox!.max.y;
 
-    (merged as THREE.BufferGeometry).morphAttributes = {};
-    merged.deleteAttribute("skinIndex");
-    merged.deleteAttribute("skinWeight");
-    merged.computeVertexNormals();
+    const pos = merged.getAttribute("position") as THREE.BufferAttribute;
+    const col = merged.getAttribute("color") as THREE.BufferAttribute;
+    const arr = col.array as Float32Array;
 
-    merged.computeBoundingSphere();
-    if (merged.boundingSphere) {
-      merged.boundingSphere.radius = GARDEN_RADIUS + 5; // acorde al jardín circular
+    const STEM_TOP = 0.68;
+    const stemR = STEM_COLOR.r,
+      stemG = STEM_COLOR.g,
+      stemB = STEM_COLOR.b;
+    const petR = PETAL_COLOR.r,
+      petG = PETAL_COLOR.g,
+      petB = PETAL_COLOR.b;
+    const antR = ANTHER_COLOR.r,
+      antG = ANTHER_COLOR.g,
+      antB = ANTHER_COLOR.b;
+
+    for (let i = 0; i < pos.count; i++) {
+      const ny = pos.getY(i) / maxY;
+      if (ny <= STEM_TOP) {
+        const k = Math.max(0, Math.min(1, ny / STEM_TOP));
+        const shade = 0.85 + 0.15 * k;
+        arr[i * 3 + 0] = stemR * shade;
+        arr[i * 3 + 1] = stemG * shade;
+        arr[i * 3 + 2] = stemB * shade;
+      } else {
+        if (ny > 0.93) {
+          arr[i * 3 + 0] = antR;
+          arr[i * 3 + 1] = antG;
+          arr[i * 3 + 2] = antB;
+        } else {
+          arr[i * 3 + 0] = petR;
+          arr[i * 3 + 1] = petG;
+          arr[i * 3 + 2] = petB;
+        }
+      }
     }
-
-    const baseScale = 1 / height;
-    return { geom: merged, baseScale, loaded: true };
+    col.needsUpdate = true;
+    merged.computeVertexNormals();
+    merged.computeBoundingSphere();
+    return { geom: merged, baseScale: 1 / height, loaded: true };
   }, [gltf]);
 }
 useGLTF.preload(MODEL_URL);
 
-/* Component */
+/** ===== Utils ===== */
+const rand = (a: number, b: number) => a + Math.random() * (b - a);
+const choice = <T,>(arr: T[]) => arr[(Math.random() * arr.length) | 0];
+
+const RIP_TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
+
+/** Yaw para mirar al centro (0,0,0). Cambiá FORWARD_BIAS a Math.PI si quedan “de espalda” */
+const FORWARD_BIAS = 0;
+function yawToCenter(x: number, z: number) {
+  return Math.atan2(-x, -z) + FORWARD_BIAS;
+}
+
+function clampToDisk(x: number, z: number, r: number) {
+  const d2 = x * x + z * z;
+  const r2 = r * r;
+  if (d2 <= r2) return [x, z] as const;
+  const d = Math.sqrt(d2);
+  return [(x / d) * r * 0.98, (z / d) * r * 0.98] as const;
+}
+function nonOverlappingPosition(existing: THREE.Vector3[], r: number) {
+  for (let i = 0; i < 40; i++) {
+    const rad = rand(2.5, r - 2);
+    const ang = rand(0, Math.PI * 2);
+    const x = Math.cos(ang) * rad;
+    const z = Math.sin(ang) * rad;
+    const [cx, cz] = clampToDisk(x, z, r - 0.6);
+    const ok = existing.every(
+      (p) =>
+        p.distanceToSquared(new THREE.Vector3(cx, 0, cz)) >=
+        MIN_SEPARATION * MIN_SEPARATION
+    );
+    if (ok) return new THREE.Vector3(cx, 0, cz);
+  }
+  return new THREE.Vector3(rand(-r * 0.7, r * 0.7), 0, rand(-r * 0.7, r * 0.7));
+}
+
+/** ===== Estado ===== */
+type LifeState = "growing" | "alive" | "dying" | "dead";
+type Item = {
+  id: number;
+  pos: THREE.Vector3;
+  scale: number;
+  rotX: number;
+  rotZ: number;
+  /** rotación Y base para mirar al centro */
+  yaw: number;
+  t: number;
+  state: LifeState;
+  respawnAt: number;
+};
 type Props = { gardenActive?: boolean };
 
 export default function Flowers({ gardenActive = false }: Props) {
-  const { data } = useSWR<FlowersResponse>("/api/flowers", fetcher, {
-    revalidateOnFocus: false,
-  });
-  const { camera } = useThree();
-
   const { geom, baseScale, loaded } = useMergedFlowerGLB();
 
-  const [hoverId, setHoverId] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  useCursor(Boolean(hoverId));
+  // Ref tipada a la InstancedMesh real
+  const instMainRef =
+    useRef<
+      THREE.InstancedMesh<
+        THREE.BufferGeometry,
+        THREE.Material | THREE.Material[]
+      >
+    >(null);
 
-  const myId = getUserId();
+  const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const fadeBufferRef = useRef<Float32Array>(new Float32Array(MAX_FLOWERS)); // 0..1 por instancia
 
-  const items = useMemo(() => {
-    const list = data?.flowers ?? [];
-    const taken = new Set<string>();
+  // Uniforms para dissolve
+  const uTimeRef = useRef<{ value: number }>({ value: 0 });
+  const uDissolveSizeRef = useRef<{ value: number }>({ value: 6.0 }); // densidad del grano mundo (4–10)
 
-    return list.slice(0, CAP).map((f) => {
-      const basePos = positionFor(f);
-      let pos = resolveNonOverlappingPosition(basePos, taken, f.id);
-      // ⬇ clamp al disco del jardín
-      const [cx, cz] = clampToDisk(pos[0], pos[2], GARDEN_RADIUS - 0.6);
-      pos = [cx, pos[1], cz];
+  const itemsRef = useRef<Item[]>(
+    new Array(MAX_FLOWERS).fill(0).map((_, i) => ({
+      id: i,
+      pos: new THREE.Vector3(9999, -10, 9999),
+      scale: rand(1.7, 2.2),
+      rotX: rand(-0.05, 0.05),
+      rotZ: rand(-0.05, 0.05),
+      yaw: 0,
+      t: 0,
+      state: "dead" as LifeState,
+      respawnAt: 0,
+    }))
+  );
+  const [version, setVersion] = useState(0);
 
-      const rnd = seedFromString(f.id);
-      const scaleBase = 2.35;
-      const scaleJitter = scaleBase * (0.92 + rnd() * 0.18);
+  // --- score acumulado para el % (no vuelve a 0 rápido)
+  const killsRef = useRef(0);
+  const activityRef = useRef(0); // acumula “intención de muerte”
+  const percentRef = useRef(0);
+  const lastSpawnRef = useRef(0);
+  const lastProgressSentRef = useRef(0);
 
-      const colorLinear = pickPaletteColor(f).clone().convertSRGBToLinear();
+  // parámetros del “loop”
+  const KILL_IMPULSE = 1.0; // cuánto suma cada kill al score
+  const TAU_SECONDS = 14; // vida media del score (decadencia lenta)
 
-      const alive = f.alive ?? !f.wilted;
-      const tiltA = rnd() * Math.PI * 2;
-      const tilt = !alive ? 0.25 + rnd() * 0.2 : 0;
-      const rotX = Math.cos(tiltA) * tilt;
-      const rotZ = Math.sin(tiltA) * tilt;
-      const isMine = !!myId && f.user_id === myId;
+  const emitProgress = () => {
+    const nowMs = performance.now();
+    if (nowMs - lastProgressSentRef.current < 100) return; // ~10fps
+    lastProgressSentRef.current = nowMs;
 
-      const msg =
-        typeof f.message === "string" && f.message.trim().length > 0
-          ? f.message.trim()
-          : "";
+    // % asintótico: nunca llega a 100 (tope 98)
+    const k = 6; // factor de curvatura
+    const p01 = Math.min(0.98, 1 - Math.exp(-activityRef.current / k));
+    percentRef.current = p01;
 
-      return { f, pos, scaleJitter, colorLinear, rotX, rotZ, isMine, msg };
-    });
-  }, [data?.flowers, myId]);
+    const alive = itemsRef.current.filter(
+      (it) => it.state === "alive" || it.state === "growing"
+    ).length;
+    const dead = MAX_FLOWERS - alive;
 
-  const handleSelect = (id: string, position: [number, number, number]) => {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("flower-focus", { detail: { id, position } })
-      );
+    window.dispatchEvent(
+      new CustomEvent("ms:flowers:progress", {
+        detail: {
+          alive,
+          dead,
+          kills: killsRef.current,
+          percent: percentRef.current,
+        },
+      })
+    );
+  };
+
+  // Crear atributo instanciado iFade cuando exista la geometría
+  useEffect(() => {
+    const geo = instMainRef.current?.geometry as
+      | THREE.InstancedBufferGeometry
+      | undefined;
+    if (!geo || geo.getAttribute("iFade")) return;
+    geo.setAttribute(
+      "iFade",
+      new THREE.InstancedBufferAttribute(fadeBufferRef.current, 1)
+    );
+  }, [version, loaded]);
+
+  useFrame((_, dt) => {
+    if (!gardenActive) return;
+    const now = performance.now() / 1000;
+
+    // tick uniforms
+    uTimeRef.current.value += dt;
+
+    // decay suave del “score de actividad”
+    const decay = Math.exp(-dt / TAU_SECONDS);
+    activityRef.current *= decay;
+
+    // spawn controlado
+    if (now - lastSpawnRef.current >= SPAWN_EVERY) {
+      lastSpawnRef.current = now;
+      const alive = itemsRef.current.filter(
+        (it) => it.state === "alive" || it.state === "growing"
+      ).length;
+      if (alive < TARGET_ALIVE) {
+        const positions = itemsRef.current
+          .filter((it) => it.state !== "dead")
+          .map((it) => it.pos);
+        const pos = nonOverlappingPosition(positions, GARDEN_RADIUS);
+        const slot = itemsRef.current.find((it) => it.state === "dead");
+        if (slot) {
+          slot.state = "growing";
+          slot.t = 0;
+          slot.pos.copy(pos);
+          slot.scale = rand(1.7, 2.2);
+          slot.rotX = rand(-0.12, 0.12);
+          slot.rotZ = rand(-0.12, 0.12);
+          slot.yaw = yawToCenter(pos.x, pos.z); // 👈 mirar al centro
+          window.dispatchEvent(
+            new CustomEvent("ms:flowers:spawn", {
+              detail: { position: [pos.x, pos.y, pos.z] },
+            })
+          );
+          window.dispatchEvent(new CustomEvent("ms:flower:regrow"));
+          setVersion((v) => v + 1);
+        }
+      }
     }
-    setSelectedId(id);
+
+    // animaciones y cambios de estado + actualizar iFade por instancia
+    let changed = false;
+    for (const it of itemsRef.current) {
+      if (it.state === "dead") continue;
+      it.t += dt;
+
+      if (it.state === "growing" && it.t >= 0.9) {
+        it.state = "alive";
+        it.t = 0;
+        changed = true;
+        window.dispatchEvent(new CustomEvent("ms:flower:regrow"));
+      } else if (it.state === "dying" && it.t >= 0.35) {
+        it.state = "dead";
+        it.t = 0;
+        changed = true;
+      }
+    }
+
+    // escribir fades: growing 0→1, alive 1, dying 1→0
+    const fades = fadeBufferRef.current;
+    for (const it of itemsRef.current) {
+      let f = 0;
+      if (it.state === "growing") f = Math.min(1, it.t / 0.9);
+      else if (it.state === "alive") f = 1;
+      else if (it.state === "dying") f = 1 - Math.min(1, it.t / 0.35);
+      else f = 0;
+      fades[it.id] = f;
+    }
+    const mesh = instMainRef.current;
+    if (mesh?.geometry?.attributes?.iFade) {
+      (
+        mesh.geometry.attributes.iFade as THREE.InstancedBufferAttribute
+      ).needsUpdate = true;
+    }
+
+    if (changed) setVersion((v) => v + 1);
+    emitProgress();
+  });
+
+  const killFlower = (it: Item) => {
+    if (it.state !== "alive" && it.state !== "growing") return;
+    it.state = "dying";
+    it.t = 0;
+    it.respawnAt = performance.now() / 1000 + rand(RESPAWN_MIN, RESPAWN_MAX);
+    killsRef.current += 1;
+    activityRef.current += KILL_IMPULSE;
+
+    window.dispatchEvent(
+      new CustomEvent("ms:flowers:kill", {
+        detail: {
+          position: [it.pos.x, it.pos.y + it.scale * baseScale, it.pos.z],
+          tag: choice(RIP_TAGS),
+        },
+      })
+    );
+    window.dispatchEvent(new CustomEvent("ms:flower:killed"));
+
+    setVersion((v) => v + 1);
+    emitProgress();
   };
 
   const hasGLB = loaded && !!geom;
+  const renderItems = itemsRef.current.map((i) => ({ ...i }));
 
-  const instRef = useRef<THREE.InstancedMesh>(null);
-  useLayoutEffect(() => {
-    const m = instRef.current;
-    if (!m) return;
-    m.frustumCulled = false;
-    m.geometry?.computeBoundingSphere?.();
-    if (m.geometry?.boundingSphere) {
-      m.geometry.boundingSphere.radius = GARDEN_RADIUS + 5;
-    }
-  }, [hasGLB]);
-
-  /* Autoselección de mi flor sólo cuando el jardín está activo */
-  useEffect(() => {
-    if (!gardenActive) {
-      setSelectedId(null);
-      return;
-    }
-    const mine = items.find((it) => it.isMine);
-    if (mine) setSelectedId(mine.f.id);
-  }, [items, gardenActive]);
-
-  /* IDs con tooltip auto (no seleccionada) */
-  const visibleTipIds = useMemo(() => {
-    if (!gardenActive) return new Set<string>();
-    const s = new Set<string>();
-    const mine = items.find((it) => it.isMine);
-    if (mine && mine.f.id !== selectedId) s.add(mine.f.id);
-    return s;
-  }, [items, selectedId, gardenActive]);
-
-  /* Controls hook */
-  interface OrbitControlsType {
-    setEnabled?: (enabled: boolean) => void;
-  }
-  const controlsSetEnabled = (enabled: boolean) => {
-    try {
-      (
-        window as unknown as { __controls?: OrbitControlsType }
-      ).__controls?.setEnabled?.(enabled);
-    } catch {}
+  const onClickInstance = (id: number) => {
+    const it = itemsRef.current[id];
+    if (!it) return;
+    const dragging = (window as unknown as { __orbitDragging?: boolean })
+      .__orbitDragging;
+    if (dragging) return;
+    killFlower(it);
   };
 
-  /* PERF: pins cercanos (sólo con jardín activo) */
-  const [pinIds, setPinIds] = useState<Set<string>>(new Set());
-  const lastCam = useRef(new THREE.Vector3());
-  const movingAcc = useRef(0);
-  const tAcc = useRef(0);
+  /** ===== Material con fade+dissolve por–instancia (tipado) ===== */
+  const flowerMaterial = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.55,
+      metalness: 0.04,
+      side: THREE.DoubleSide,
+      transparent: true,
+      depthWrite: true,
+      alphaTest: 0.001,
+    });
 
-  useFrame((_, dt) => {
-    if (!gardenActive) {
-      if (pinIds.size) setPinIds(new Set());
-      return;
-    }
+    (
+      m as THREE.MeshStandardMaterial & { alphaToCoverage?: boolean }
+    ).alphaToCoverage = true;
 
-    tAcc.current += dt;
-    const camPos = camera.position;
-    const d = lastCam.current.distanceToSquared(camPos);
-    const moving = d > CAMERA_IDLE_EPS * CAMERA_IDLE_EPS;
-    lastCam.current.copy(camPos);
+    m.onBeforeCompile = (shader) => {
+      // uniforms tipados
+      shader.uniforms.uTime = uTimeRef.current;
+      shader.uniforms.uDissolveSize = uDissolveSizeRef.current;
 
-    if (moving) movingAcc.current = 0.2;
-    else movingAcc.current = Math.max(0, movingAcc.current - dt);
+      // === VERTEX ===
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+           attribute float iFade;
+           varying float vFade;
+           varying vec3 vWorldPos;`
+        )
+        .replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+           vFade = iFade;
+           vec4 wp = modelMatrix * vec4(transformed, 1.0);
+           vWorldPos = wp.xyz;`
+        );
 
-    if (movingAcc.current > 0) {
-      if (pinIds.size) setPinIds(new Set());
-      return;
-    }
+      // === FRAGMENT ===
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>
+           uniform float uTime;
+           uniform float uDissolveSize;
+           varying float vFade;
+           varying vec3 vWorldPos;
 
-    if (tAcc.current < PIN_RECALC_MS / 1000) return;
-    tAcc.current = 0;
+           float hash21(vec2 p) {
+             p = fract(p*vec2(123.34, 345.45));
+             p += dot(p, p+34.345);
+             return fract(p.x*p.y);
+           }
 
-    const mustShow = new Set<string>();
-    const mine = items.find((it) => it.isMine);
-    if (mine) mustShow.add(mine.f.id);
-    if (hoverId) mustShow.add(hoverId);
-    if (selectedId) mustShow.add(selectedId);
+           float bayer4(vec2 fragCoord){
+             int x = int(mod(fragCoord.x, 4.0));
+             int y = int(mod(fragCoord.y, 4.0));
+             int m[16];
+             m[0]=0;  m[1]=8;  m[2]=2;  m[3]=10;
+             m[4]=12; m[5]=4;  m[6]=14; m[7]=6;
+             m[8]=3;  m[9]=11; m[10]=1; m[11]=9;
+             m[12]=15; m[13]=7; m[14]=13; m[15]=5;
+             int idx = y*4 + x;
+             return float(m[idx]) / 16.0;
+           }`
+        )
+        .replace(
+          "#include <alphatest_fragment>",
+          `
+           // 1) opacidad base por instancia
+           diffuseColor.a *= vFade;
 
-    if (mustShow.size < MAX_PINS + mustShow.size) {
-      const cx = camPos.x,
-        cy = camPos.y,
-        cz = camPos.z;
-      const maxD2 = PIN_MAX_DIST * PIN_MAX_DIST;
-      const candidates: { id: string; d2: number }[] = [];
-      for (const it of items) {
-        if (mustShow.has(it.f.id)) continue;
-        const [x, y, z] = it.pos;
-        const dx = x - cx,
-          dy = y + 1.2 - cy,
-          dz = z - cz;
-        const d2 = dx * dx + dy * dy + dz * dz;
-        if (d2 <= maxD2) candidates.push({ id: it.f.id, d2 });
-      }
-      candidates.sort((a, b) => a.d2 - b.d2);
-      for (
-        let i = 0;
-        i < candidates.length &&
-        mustShow.size <
-          MAX_PINS + (hoverId ? 1 : 0) + (selectedId ? 1 : 0) + (mine ? 1 : 0);
-        i++
-      ) {
-        mustShow.add(candidates[i]!.id);
-      }
-    }
+           // 2) desteñir color hacia "seco" en la muerte
+           vec3 dryCol = vec3(0.35, 0.28, 0.15);
+           diffuseColor.rgb = mix(dryCol, diffuseColor.rgb, vFade);
 
-    const same =
-      pinIds.size === mustShow.size &&
-      [...pinIds].every((id) => mustShow.has(id));
-    if (!same) setPinIds(mustShow);
-  });
+           // 3) dissolve: patrón mundo + dither de pantalla
+           float cell = hash21(floor(vWorldPos.xz * uDissolveSize));
+           float dthr = mix(0.0, 1.0, 1.0 - vFade); // 0 viva → 1 muerta
+           dthr = clamp(dthr + (bayer4(gl_FragCoord.xy)-0.5)/32.0, 0.0, 1.0);
 
-  const onUiDown = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    controlsSetEnabled(false);
-  };
-  const onUiUp = (e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    controlsSetEnabled(true);
-  };
+           if (cell < dthr) discard;
+
+           #include <alphatest_fragment>
+          `
+        );
+    };
+
+    m.needsUpdate = true;
+    matRef.current = m;
+    return m;
+  }, []);
 
   return (
     <>
-      {/* Geometría (visual) */}
       {hasGLB ? (
         <Instances
-          ref={instRef}
+          ref={instMainRef}
           name="flowers"
-          limit={CAP}
-          range={items.length}
+          limit={MAX_FLOWERS}
+          range={renderItems.length}
           castShadow
           receiveShadow
           frustumCulled={false}
-          onPointerMissed={(e) => {
-            if (e.type === "click") setSelectedId(null);
-          }}
         >
           <primitive object={geom!} attach="geometry" />
-          <meshStandardMaterial
-            vertexColors
-            color="#ffffff"
-            roughness={0.55}
-            metalness={0.04}
-            depthWrite
-            depthTest
-          />
-          {items.map(({ f, pos, scaleJitter, colorLinear, rotX, rotZ }) => {
-            const s = scaleJitter * baseScale;
-            const yBase = Math.max(0, pos[1]);
+          <primitive object={flowerMaterial} attach="material" />
+          {renderItems.map((it) => {
+            let s = it.scale * baseScale;
+            let y = 0;
+            let tiltX = it.rotX;
+            let tiltZ = it.rotZ;
+
+            if (it.state === "growing") {
+              const k = Math.min(1, it.t / 0.9);
+              s *= 0.2 + 0.8 * k;
+              y = 0.02 + 0.12 * (1 - k);
+              tiltX *= 0.6 + 0.4 * k;
+              tiltZ *= 0.6 + 0.4 * k;
+            } else if (it.state === "dying") {
+              const k = Math.min(1, it.t / 0.35);
+              s *= 1.1 - 1.05 * k; // overshoot rápido
+              y = 0.05 + 0.25 * k; // un poquito hacia arriba
+              tiltX = tiltX * (1.0 + 0.6 * k) + 0.12 * k; // leve “derrumbe”
+              tiltZ = tiltZ * (1.0 + 0.6 * k) + 0.072 * k;
+            }
+
+            const yaw = itemsRef.current[it.id].yaw; // 👈 mirar al centro
+
             return (
               <Instance
-                key={`flower-${f.id}`}
-                position={[pos[0], yBase, pos[2]]}
+                key={`f-${it.id}`} // clave estable por instancia
+                position={[it.pos.x, y, it.pos.z]}
+                rotation={[tiltX, yaw, tiltZ]}
                 scale={[s, s, s]}
-                rotation={[rotX, 0, rotZ]}
-                color={colorLinear}
-                onPointerDown={(e: ThreeEvent<PointerEvent>) => {
-                  if (e.instanceId != null) controlsSetEnabled(false);
-                }}
-                onPointerUp={() => controlsSetEnabled(true)}
-                onPointerCancel={() => controlsSetEnabled(true)}
-                onPointerOver={(e: ThreeEvent<PointerEvent>) => {
-                  e.stopPropagation();
-                  setHoverId(f.id);
-                }}
-                onPointerOut={(e: ThreeEvent<PointerEvent>) => {
-                  e.stopPropagation();
-                  setHoverId((id) => (id === f.id ? null : id));
-                }}
-                onClick={(e: ThreeEvent<PointerEvent>) => {
-                  if (
-                    (window as Window & { __orbitDragging?: boolean })
-                      .__orbitDragging
-                  )
-                    return;
-                  e.stopPropagation();
-                  handleSelect(f.id, [pos[0], yBase, pos[2]]);
-                }}
+                onClick={() => onClickInstance(it.id)}
               />
             );
           })}
@@ -442,183 +510,51 @@ export default function Flowers({ gardenActive = false }: Props) {
       ) : (
         <Instances
           name="flowers-fallback"
-          limit={CAP}
-          range={items.length}
+          limit={MAX_FLOWERS}
+          range={renderItems.length}
           frustumCulled={false}
-          castShadow
-          receiveShadow
         >
-          <cylinderGeometry args={[0.05, 0.05, 1, 8]} />
+          <cylinderGeometry args={[0.05, 0.05, 1, 10]} />
           <meshStandardMaterial roughness={0.7} metalness={0.0} />
-          {items.map(({ f, pos, scaleJitter }) => {
-            const s = scaleJitter * 0.9;
-            const yBase = Math.max(0, pos[1]);
+          {renderItems.map((it) => {
+            let s = it.scale * 0.9;
+            if (it.state === "growing")
+              s *= 0.2 + 0.8 * Math.min(1, it.t / 0.9);
+            if (it.state === "dying")
+              s *= 1.1 - 1.05 * Math.min(1, it.t / 0.35);
             return (
               <Instance
-                key={`flower-${f.id}`}
-                position={[pos[0], yBase + 0.5 * s, pos[2]]}
+                key={`ff-${it.id}`} // clave estable
+                position={[it.pos.x, 0.5 * s, it.pos.z]}
                 scale={[s, s, s]}
-                color={"#7aa34f"}
-                onPointerDown={() => controlsSetEnabled(false)}
-                onPointerUp={() => controlsSetEnabled(true)}
-                onPointerCancel={() => controlsSetEnabled(true)}
-                onClick={(e: ThreeEvent<PointerEvent>) => {
-                  if (
-                    (window as Window & { __orbitDragging?: boolean })
-                      .__orbitDragging
-                  )
-                    return;
-                  e.stopPropagation();
-                  handleSelect(f.id, [pos[0], yBase, pos[2]]);
-                }}
+                onClick={() => onClickInstance(it.id)}
               />
             );
           })}
         </Instances>
       )}
 
-      {/* Hitboxes (sólo activas dentro del jardín) */}
       {gardenActive && (
         <Instances
           name="flower-hitareas"
-          limit={CAP}
-          range={items.length}
+          limit={MAX_FLOWERS}
+          range={renderItems.length}
           frustumCulled={false}
-          onPointerDown={(e: ThreeEvent<PointerEvent>) => {
-            if (e.instanceId != null) controlsSetEnabled(false);
-          }}
-          onPointerUp={() => controlsSetEnabled(true)}
-          onPointerCancel={() => controlsSetEnabled(true)}
-          onPointerMissed={(e) => {
-            if (e.type === "click") setSelectedId(null);
-          }}
         >
           <cylinderGeometry
-            args={[HITBOX_RADIUS, HITBOX_RADIUS, HITBOX_HEIGHT, 16]}
+            args={[HITBOX_RADIUS, HITBOX_RADIUS, HITBOX_HEIGHT, 12]}
           />
-          <meshBasicMaterial
-            transparent
-            opacity={0}
-            depthWrite={false}
-            depthTest={true}
-            colorWrite={false as unknown as boolean}
-          />
-          {items.map(({ f, pos, scaleJitter }) => {
-            const s = scaleJitter * baseScale;
-            const yBase = Math.max(0, pos[1]);
-            const yCenter = yBase + s * HITBOX_CENTER_FACTOR;
-            return (
-              <Instance
-                key={`hit-${f.id}`}
-                position={[pos[0], yCenter, pos[2]]}
-                scale={[s, s, s]}
-                onPointerOver={(e: ThreeEvent<PointerEvent>) => {
-                  e.stopPropagation();
-                  setHoverId(f.id);
-                }}
-                onPointerOut={(e: ThreeEvent<PointerEvent>) => {
-                  e.stopPropagation();
-                  setHoverId((id) => (id === f.id ? null : id));
-                }}
-                onClick={(e: ThreeEvent<PointerEvent>) => {
-                  if (
-                    (window as Window & { __orbitDragging?: boolean })
-                      .__orbitDragging
-                  )
-                    return;
-                  e.stopPropagation();
-                  handleSelect(f.id, [pos[0], yBase, pos[2]]);
-                }}
-              />
-            );
-          })}
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          {renderItems.map((it) => (
+            <Instance
+              key={`hit-${it.id}`} // clave estable
+              position={[it.pos.x, HITBOX_HEIGHT * 0.5, it.pos.z]}
+              scale={[1, 1, 1]}
+              onClick={() => onClickInstance(it.id)}
+            />
+          ))}
         </Instances>
       )}
-
-      {/* Pins */}
-      {gardenActive &&
-        items.map(({ f, pos, isMine, msg }) => {
-          if (!pinIds.has(f.id) && !isMine) return null;
-          const yBase = Math.max(0, pos[1]);
-          const btnY = yBase + 1.6;
-          const isOpen = f.id === selectedId || isMine;
-          const label =
-            msg && msg.length > 0 ? msg : isMine ? "Tu flor" : "Sin mensaje";
-          return (
-            <Html
-              key={`btn-${f.id}`}
-              position={[pos[0], btnY, pos[2]]}
-              center
-              distanceFactor={9}
-              occlude={false}
-              className="flower-pin-wrap"
-            >
-              <button
-                type="button"
-                className={`flower-pin ${
-                  isOpen ? "flower-pin--open" : "flower-pin--show"
-                }`}
-                aria-label={
-                  isOpen ? "Ocultar mensaje" : "Ver mensaje de esta flor"
-                }
-                onMouseDown={onUiDown}
-                onMouseUp={onUiUp}
-                onTouchStart={(e: React.TouchEvent<HTMLButtonElement>) =>
-                  onUiDown(e)
-                }
-                onTouchEnd={(e: React.TouchEvent<HTMLButtonElement>) =>
-                  onUiUp(e)
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelect(f.id, [pos[0], yBase, pos[2]]);
-                }}
-              >
-                {!isOpen && (
-                  <span className="flower-pin__icon" aria-hidden>
-                    i
-                  </span>
-                )}
-                <span className="flower-pin__label">{label}</span>
-              </button>
-            </Html>
-          );
-        })}
-
-      {/* Tooltips 3D */}
-      {gardenActive &&
-        items.map(({ f, pos, isMine, msg }) => {
-          if (f.id === selectedId || isMine) return null;
-          const show = visibleTipIds.has(f.id) && msg.length > 0;
-          if (!show) return null;
-
-          const yBase = Math.max(0, pos[1]);
-          const position: [number, number, number] = [
-            pos[0],
-            yBase + 1.45,
-            pos[2],
-          ];
-
-          return (
-            <group key={`tooltip-${f.id}`}>
-              <Html
-                position={position}
-                center
-                distanceFactor={8}
-                occlude
-                className="flower-tooltip"
-              >
-                <div
-                  className="flower-tooltip__inner"
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span className="flower-tooltip__msg">{msg}</span>
-                </div>
-              </Html>
-            </group>
-          );
-        })}
     </>
   );
 }

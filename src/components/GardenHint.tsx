@@ -2,15 +2,40 @@
 "use client";
 import * as React from "react";
 
-export default function GardenHint({ seconds = 3.2 }: { seconds?: number }) {
-  const [open, setOpen] = React.useState(false);
+const MESSAGES = [
+  "Por nada del mundo hagas click en las flores. (Probalo.)",
+  "Click en las flores para ver morir algo hermoso.",
+  "Probá qué pasa si tocás una flor.",
+  "No hagas click en las flores. En serio.",
+];
 
-  // Mostrar siempre que se monte (cuando entrás al jardín)
+export default function GardenHint({
+  seconds = 4,
+  autoRotateMs = 0, // poné 4000 si querés que cambie cada 4s
+}: {
+  seconds?: number;
+  autoRotateMs?: number;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [msgIdx, setMsgIdx] = React.useState(
+    Math.floor(Math.random() * MESSAGES.length)
+  );
+
+  // Mostrar popup al entrar
   React.useEffect(() => {
     setOpen(true);
     const t = setTimeout(() => setOpen(false), seconds * 1000);
     return () => clearTimeout(t);
   }, [seconds]);
+
+  // Rotación opcional entre frases
+  React.useEffect(() => {
+    if (!autoRotateMs) return;
+    const id = setInterval(() => {
+      setMsgIdx((i) => (i + 1) % MESSAGES.length);
+    }, autoRotateMs);
+    return () => clearInterval(id);
+  }, [autoRotateMs]);
 
   if (!open) return null;
 
@@ -79,7 +104,7 @@ export default function GardenHint({ seconds = 3.2 }: { seconds?: number }) {
           textShadow: "0 1px 2px rgba(0,0,0,.25)",
         }}
       >
-        Seleccioná una flor y plantá tu recuerdo.
+        {MESSAGES[msgIdx]}
       </div>
     </div>
   );

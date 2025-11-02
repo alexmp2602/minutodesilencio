@@ -249,8 +249,8 @@ function TimelineRig({
     if (gardenActive) {
       const f = scene.fog as THREE.Fog | null;
       if (f) {
-        f.near = 12;
-        f.far = 42;
+        f.near = 10;
+        f.far = 160;
       }
       return;
     }
@@ -274,8 +274,8 @@ function TimelineRig({
     if (f) {
       const NEAR_START = 0;
       const FAR_START = 0;
-      const NEAR_END = 0;
-      const FAR_END = 40;
+      const NEAR_END = 8;
+      const FAR_END = 300;
       f.near = THREE.MathUtils.lerp(NEAR_START, NEAR_END, k);
       f.far = THREE.MathUtils.lerp(FAR_START, FAR_END, k);
     }
@@ -473,7 +473,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
         gl.toneMappingExposure = 0.68;
         gl.shadowMap.enabled = true;
         gl.shadowMap.type = THREE.PCFSoftShadowMap;
-        scene.fog = new THREE.Fog(INTRO_CLEAR.clone(), 10, 26); // 👈 arranca azul
+        scene.fog = new THREE.Fog(INTRO_CLEAR.clone(), 8, 120); // 👈 arranca azul
       }}
       onPointerDown={(e) => {
         if (e.button === 2 || e.button === 0) setGrabbing(true);
@@ -543,6 +543,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
         </group>
 
         <ambientLight intensity={0.35} />
+        <hemisphereLight args={[0xffffff, 0x335533, 0.35]} position={[0, 1, 0]} />
         <directionalLight
           color={0xffe1b0}
           intensity={1.15}
@@ -556,6 +557,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           shadow-camera-right={16}
           shadow-camera-top={16}
           shadow-camera-bottom={-16}
+          shadow-bias={-0.0005}
         />
 
         <Suspense fallback={null}>
@@ -567,6 +569,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
               bladeHeight={0.65}
               wind={0.8}
             />
+            {/* ⬇️ Montaje para el spawner/lógica de flores (Etapa 2) */}
             <Flowers gardenActive={overlayVisible} />
           </group>
         </Suspense>
@@ -613,9 +616,32 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
         <Html fullscreen pointerEvents="none" zIndexRange={[50, 0]}>
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
+              {/* Root general existente (mantengo) */}
               <div
                 id="overlay-root"
                 style={{ position: "fixed", inset: 0, zIndex: 60 }}
+              />
+              {/* NUEVOS puntos de montaje (sin lógica aún) */}
+              <div
+                id="hud-root" /* barra/porcentaje a la izquierda */
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  bottom: 0,
+                  left: 0,
+                  width: "0px", // será controlado por GardenOverlay/Progress HUD
+                  zIndex: 70,
+                  pointerEvents: "none",
+                }}
+              />
+              <div
+                id="fx-root" /* mensajes flotantes (#qepd, #rip, …) */
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 75,
+                  pointerEvents: "none",
+                }}
               />
               {/* 👇 Hint SOLO dentro del jardín y re-montado en cada entrada */}
               {gardenActive && <GardenHint key={hintEpoch} seconds={3.2} />}
