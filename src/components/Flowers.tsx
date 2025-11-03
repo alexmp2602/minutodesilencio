@@ -5,6 +5,7 @@ import { useMemo, useRef, useState, useEffect } from "react";
 import { Instances, Instance, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import useSfx from "@/hooks/useSfx";
 
 /** ===== Config ===== */
 const MODEL_URL = "/models/flower.glb";
@@ -74,6 +75,8 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
     const maxY = merged.boundingBox!.max.y;
 
     const pos = merged.getAttribute("position") as THREE.BufferAttribute;
+    the: {
+    }
     const col = merged.getAttribute("color") as THREE.BufferAttribute;
     const arr = col.array as Float32Array;
 
@@ -122,7 +125,7 @@ const choice = <T,>(arr: T[]) => arr[(Math.random() * arr.length) | 0];
 
 const RIP_TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
 
-/** Yaw para mirar al centro (0,0,0). Cambiá FORWARD_BIAS a Math.PI si quedan “de espalda” */
+/** Yaw hacia el centro (0,0,0) */
 const FORWARD_BIAS = 0;
 function yawToCenter(x: number, z: number) {
   return Math.atan2(-x, -z) + FORWARD_BIAS;
@@ -160,7 +163,6 @@ type Item = {
   scale: number;
   rotX: number;
   rotZ: number;
-  /** rotación Y base para mirar al centro */
   yaw: number;
   t: number;
   state: LifeState;
@@ -170,8 +172,9 @@ type Props = { gardenActive?: boolean };
 
 export default function Flowers({ gardenActive = false }: Props) {
   const { geom, baseScale, loaded } = useMergedFlowerGLB();
+  const { play } = useSfx();
 
-  // Ref tipada a la InstancedMesh real
+  // InstancedMesh real
   const instMainRef =
     useRef<
       THREE.InstancedMesh<
@@ -181,11 +184,11 @@ export default function Flowers({ gardenActive = false }: Props) {
     >(null);
 
   const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
-  const fadeBufferRef = useRef<Float32Array>(new Float32Array(MAX_FLOWERS)); // 0..1 por instancia
+  const fadeBufferRef = useRef<Float32Array>(new Float32Array(MAX_FLOWERS));
 
-  // Uniforms para dissolve
+  // Uniforms
   const uTimeRef = useRef<{ value: number }>({ value: 0 });
-  const uDissolveSizeRef = useRef<{ value: number }>({ value: 6.0 }); // densidad del grano mundo (4–10)
+  const uDissolveSizeRef = useRef<{ value: number }>({ value: 6.0 });
 
   const itemsRef = useRef<Item[]>(
     new Array(MAX_FLOWERS).fill(0).map((_, i) => ({
@@ -202,24 +205,22 @@ export default function Flowers({ gardenActive = false }: Props) {
   );
   const [version, setVersion] = useState(0);
 
-  // --- score acumulado para el % (no vuelve a 0 rápido)
+  // score acumulado
   const killsRef = useRef(0);
-  const activityRef = useRef(0); // acumula “intención de muerte”
+  const activityRef = useRef(0);
   const percentRef = useRef(0);
   const lastSpawnRef = useRef(0);
   const lastProgressSentRef = useRef(0);
 
-  // parámetros del “loop”
-  const KILL_IMPULSE = 1.0; // cuánto suma cada kill al score
-  const TAU_SECONDS = 14; // vida media del score (decadencia lenta)
+  const KILL_IMPULSE = 1.0;
+  const TAU_SECONDS = 14;
 
   const emitProgress = () => {
     const nowMs = performance.now();
-    if (nowMs - lastProgressSentRef.current < 100) return; // ~10fps
+    if (nowMs - lastProgressSentRef.current < 100) return;
     lastProgressSentRef.current = nowMs;
 
-    // % asintótico: nunca llega a 100 (tope 98)
-    const k = 6; // factor de curvatura
+    const k = 6;
     const p01 = Math.min(0.98, 1 - Math.exp(-activityRef.current / k));
     percentRef.current = p01;
 
@@ -240,7 +241,7 @@ export default function Flowers({ gardenActive = false }: Props) {
     );
   };
 
-  // Crear atributo instanciado iFade cuando exista la geometría
+  // atributo instanciado iFade
   useEffect(() => {
     const geo = instMainRef.current?.geometry as
       | THREE.InstancedBufferGeometry
@@ -256,14 +257,13 @@ export default function Flowers({ gardenActive = false }: Props) {
     if (!gardenActive) return;
     const now = performance.now() / 1000;
 
-    // tick uniforms
     uTimeRef.current.value += dt;
 
-    // decay suave del “score de actividad”
+    // decaimiento
     const decay = Math.exp(-dt / TAU_SECONDS);
     activityRef.current *= decay;
 
-    // spawn controlado
+    // spawn
     if (now - lastSpawnRef.current >= SPAWN_EVERY) {
       lastSpawnRef.current = now;
       const alive = itemsRef.current.filter(
@@ -282,7 +282,14 @@ export default function Flowers({ gardenActive = false }: Props) {
           slot.scale = rand(1.7, 2.2);
           slot.rotX = rand(-0.12, 0.12);
           slot.rotZ = rand(-0.12, 0.12);
-          slot.yaw = yawToCenter(pos.x, pos.z); // 👈 mirar al centro
+          slot.yaw = yawToCenter(pos.x, pos.z);
+
+          // SFX spawn centralizado
+          play("flower-pop", {
+            volume: 0.005,
+            detuneSemitones: (Math.random() - 0.5) * 1.2, // leve variación
+          });
+
           window.dispatchEvent(
             new CustomEvent("ms:flowers:spawn", {
               detail: { position: [pos.x, pos.y, pos.z] },
@@ -294,7 +301,7 @@ export default function Flowers({ gardenActive = false }: Props) {
       }
     }
 
-    // animaciones y cambios de estado + actualizar iFade por instancia
+    // animaciones / estados
     let changed = false;
     for (const it of itemsRef.current) {
       if (it.state === "dead") continue;
@@ -312,7 +319,7 @@ export default function Flowers({ gardenActive = false }: Props) {
       }
     }
 
-    // escribir fades: growing 0→1, alive 1, dying 1→0
+    // fades por instancia
     const fades = fadeBufferRef.current;
     for (const it of itemsRef.current) {
       let f = 0;
@@ -367,7 +374,7 @@ export default function Flowers({ gardenActive = false }: Props) {
     killFlower(it);
   };
 
-  /** ===== Material con fade+dissolve por–instancia (tipado) ===== */
+  /** ===== Material con fade+dissolve ===== */
   const flowerMaterial = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -378,17 +385,14 @@ export default function Flowers({ gardenActive = false }: Props) {
       depthWrite: true,
       alphaTest: 0.001,
     });
-
     (
       m as THREE.MeshStandardMaterial & { alphaToCoverage?: boolean }
     ).alphaToCoverage = true;
 
     m.onBeforeCompile = (shader) => {
-      // uniforms tipados
       shader.uniforms.uTime = uTimeRef.current;
       shader.uniforms.uDissolveSize = uDissolveSizeRef.current;
 
-      // === VERTEX ===
       shader.vertexShader = shader.vertexShader
         .replace(
           "#include <common>",
@@ -405,7 +409,6 @@ export default function Flowers({ gardenActive = false }: Props) {
            vWorldPos = wp.xyz;`
         );
 
-      // === FRAGMENT ===
       shader.fragmentShader = shader.fragmentShader
         .replace(
           "#include <common>",
@@ -436,16 +439,13 @@ export default function Flowers({ gardenActive = false }: Props) {
         .replace(
           "#include <alphatest_fragment>",
           `
-           // 1) opacidad base por instancia
            diffuseColor.a *= vFade;
 
-           // 2) desteñir color hacia "seco" en la muerte
            vec3 dryCol = vec3(0.35, 0.28, 0.15);
            diffuseColor.rgb = mix(dryCol, diffuseColor.rgb, vFade);
 
-           // 3) dissolve: patrón mundo + dither de pantalla
            float cell = hash21(floor(vWorldPos.xz * uDissolveSize));
-           float dthr = mix(0.0, 1.0, 1.0 - vFade); // 0 viva → 1 muerta
+           float dthr = mix(0.0, 1.0, 1.0 - vFade);
            dthr = clamp(dthr + (bayer4(gl_FragCoord.xy)-0.5)/32.0, 0.0, 1.0);
 
            if (cell < dthr) discard;
@@ -488,17 +488,17 @@ export default function Flowers({ gardenActive = false }: Props) {
               tiltZ *= 0.6 + 0.4 * k;
             } else if (it.state === "dying") {
               const k = Math.min(1, it.t / 0.35);
-              s *= 1.1 - 1.05 * k; // overshoot rápido
-              y = 0.05 + 0.25 * k; // un poquito hacia arriba
-              tiltX = tiltX * (1.0 + 0.6 * k) + 0.12 * k; // leve “derrumbe”
+              s *= 1.1 - 1.05 * k;
+              y = 0.05 + 0.25 * k;
+              tiltX = tiltX * (1.0 + 0.6 * k) + 0.12 * k;
               tiltZ = tiltZ * (1.0 + 0.6 * k) + 0.072 * k;
             }
 
-            const yaw = itemsRef.current[it.id].yaw; // 👈 mirar al centro
+            const yaw = itemsRef.current[it.id].yaw;
 
             return (
               <Instance
-                key={`f-${it.id}`} // clave estable por instancia
+                key={`f-${it.id}`}
                 position={[it.pos.x, y, it.pos.z]}
                 rotation={[tiltX, yaw, tiltZ]}
                 scale={[s, s, s]}
@@ -524,7 +524,7 @@ export default function Flowers({ gardenActive = false }: Props) {
               s *= 1.1 - 1.05 * Math.min(1, it.t / 0.35);
             return (
               <Instance
-                key={`ff-${it.id}`} // clave estable
+                key={`ff-${it.id}`}
                 position={[it.pos.x, 0.5 * s, it.pos.z]}
                 scale={[s, s, s]}
                 onClick={() => onClickInstance(it.id)}
@@ -547,7 +547,7 @@ export default function Flowers({ gardenActive = false }: Props) {
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           {renderItems.map((it) => (
             <Instance
-              key={`hit-${it.id}`} // clave estable
+              key={`hit-${it.id}`}
               position={[it.pos.x, HITBOX_HEIGHT * 0.5, it.pos.z]}
               scale={[1, 1, 1]}
               onClick={() => onClickInstance(it.id)}

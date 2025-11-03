@@ -1,56 +1,151 @@
 // src/hooks/useSfx.ts
 "use client";
 import { useCallback, useRef } from "react";
+import { useMute } from "@/hooks/useMute";
 
 type Src = { src: string; type?: string };
+type Bank = {
+  id: string;
+  sources: Src[];
+  pool: HTMLAudioElement[];
+  polyphony: number;
+  idx: number;
+  lastAt: number;
+  cooldownMs: number;
+};
+type PlayOpts = {
+  volume?: number; // 0..1
+  rate?: number; // 1 = normal
+  detuneSemitones?: number; // +/- semitonos
+  allowOverlap?: boolean; // ignora cooldown
+};
 
 const SUPPORTED_MIME = ["audio/mpeg", "audio/ogg", "audio/wav"];
 
+function canPlayAny(probe: HTMLAudioElement, s: Src) {
+  const type = s.type ?? "";
+  if (!type) return true;
+  if (!SUPPORTED_MIME.includes(type)) return false;
+  return !!probe.canPlayType(type);
+}
+
 export default function useSfx() {
-  // Cacheamos objetos Audio por URL para evitar relaunch/redescargas
-  const cache = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const { muted } = useMute();
+
+  // bancos por id
+  const banks = useRef<Map<string, Bank>>(new Map());
+  const didDefault = useRef(false);
+
+  const ensureDefaults = useCallback(() => {
+    if (didDefault.current) return;
+    didDefault.current = true;
+    // defaults del proyecto
+    register(
+      "flower-pop",
+      [
+        {
+          src: "/audio/bar-increase-cartoon-funny-jump-384919.mp3",
+          type: "audio/mpeg",
+        },
+      ],
+      { polyphony: 4, cooldownMs: 70 }
+    );
+    register(
+      "choir",
+      [{ src: "/audio/angelic-choir-intro-257473.mp3", type: "audio/mpeg" }],
+      { polyphony: 1, cooldownMs: 300 }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pickSupported = (sources: Src[]) => {
     const probe = document.createElement("audio");
-    // priorizamos por MIME conocido; si no hay, probamos extensiones
     for (const s of sources) {
-      const type = s.type ?? "";
-      if (!type || SUPPORTED_MIME.includes(type)) {
-        if (!type || probe.canPlayType(type)) return s;
-      }
+      if (canPlayAny(probe, s)) return s;
     }
     // último intento por extensión
-    return sources.find((s) => {
-      const u = s.src.toLowerCase();
-      return u.endsWith(".mp3") || u.endsWith(".ogg") || u.endsWith(".wav");
-    });
+    return (
+      sources.find((s) => {
+        const u = s.src.toLowerCase();
+        return u.endsWith(".mp3") || u.endsWith(".ogg") || u.endsWith(".wav");
+      }) ?? sources[0]
+    );
   };
 
-  const playFile = useCallback(async (sources: Src[]) => {
-    try {
-      const pick = pickSupported(sources);
-      if (!pick) return;
+  function makeAudio(src: string) {
+    const a = new Audio(src);
+    a.preload = "auto";
+    a.crossOrigin = "anonymous";
+    a.loop = false;
+    a.volume = 1;
+    return a;
+  }
 
-      let a = cache.current.get(pick.src);
-      if (!a) {
-        a = new Audio(pick.src);
-        a.preload = "auto";
-        a.crossOrigin = "anonymous";
-        cache.current.set(pick.src, a);
-      } else {
-        // si ya terminó antes, volvemos al inicio
+  function register(
+    id: string,
+    sources: Src[],
+    opts?: { polyphony?: number; cooldownMs?: number }
+  ) {
+    const existing = banks.current.get(id);
+    if (existing) return existing;
+
+    const pick = pickSupported(sources);
+    const polyphony = Math.max(1, Math.min(8, opts?.polyphony ?? 2));
+    const pool = Array.from({ length: polyphony }, () => makeAudio(pick.src));
+    const bank: Bank = {
+      id,
+      sources,
+      pool,
+      polyphony,
+      idx: 0,
+      lastAt: -1e9,
+      cooldownMs: opts?.cooldownMs ?? 60,
+    };
+    banks.current.set(id, bank);
+    return bank;
+  }
+
+  const play = useCallback(
+    async (id: string, opts: PlayOpts = {}) => {
+      ensureDefaults();
+      const bank = banks.current.get(id);
+      if (!bank || muted) return;
+
+      const now = performance.now();
+      if (!opts.allowOverlap && now - bank.lastAt < bank.cooldownMs) return;
+      bank.lastAt = now;
+
+      // round-robin
+      const a = bank.pool[bank.idx];
+      bank.idx = (bank.idx + 1) % bank.polyphony;
+
+      try {
+        // reset rápido
         try {
+          a.pause();
           a.currentTime = 0;
         } catch {}
+        const rateBase = opts.rate ?? 1;
+        const det = opts.detuneSemitones ?? 0;
+        a.playbackRate = rateBase * Math.pow(2, det / 12);
+        a.volume = Math.max(0, Math.min(1, opts.volume ?? 1));
+        await a.play();
+      } catch {
+        // desbloqueo con primer interacción si el navegador lo exige
+        const unlock = () => {
+          a.play().finally(() => {
+            window.removeEventListener("pointerdown", unlock);
+            window.removeEventListener("keydown", unlock);
+            window.removeEventListener("touchend", unlock);
+          });
+        };
+        window.addEventListener("pointerdown", unlock, { once: true });
+        window.addEventListener("keydown", unlock, { once: true });
+        window.addEventListener("touchend", unlock, { once: true });
       }
+    },
+    [ensureDefaults, muted]
+  );
 
-      await a.play().catch(() => {
-        // algunos navegadores exigen gesto del usuario; ignoramos el error
-      });
-    } catch {
-      /* no-op */
-    }
-  }, []);
-
-  return { playFile };
+  return { register, play };
 }

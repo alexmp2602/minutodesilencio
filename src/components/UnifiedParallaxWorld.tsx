@@ -543,7 +543,10 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
         </group>
 
         <ambientLight intensity={0.35} />
-        <hemisphereLight args={[0xffffff, 0x335533, 0.35]} position={[0, 1, 0]} />
+        <hemisphereLight
+          args={[0xffffff, 0x335533, 0.35]}
+          position={[0, 1, 0]}
+        />
         <directionalLight
           color={0xffe1b0}
           intensity={1.15}
@@ -607,7 +610,12 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
         <Html style={{ pointerEvents: "none" }}>
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
-              <AmbientAudio src="/audio/ambient.mp3" volume={0.15} />
+              {/* Ambient del JARDÍN (se cruza con el azul que maneja TextOverlay) */}
+              <AmbientAudio
+                src="/audio/ambient.mp3"
+                volume={0.16}
+                fadeMs={360}
+              />
             </div>
           )}
         </Html>

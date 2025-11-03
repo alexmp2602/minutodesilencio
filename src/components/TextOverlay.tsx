@@ -1,7 +1,10 @@
 "use client";
 
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import AmbientAudio from "@/components/AmbientAudio";
+import { useMute } from "@/hooks/useMute";
+import useSfx from "@/hooks/useSfx";
 
 /* ───────── helpers ───────── */
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -26,14 +29,12 @@ function useMounted() {
   return m;
 }
 
-// ── tamaños de la barra (más finita)
-const BAR_H_NARROW = "min(20px, 5vw)"; // mobile
-const BAR_H_WIDE = "min(66px, 5vw)"; // desktop
+// ── tamaños de la barra
+const BAR_H_NARROW = "min(20px, 5vw)";
+const BAR_H_WIDE = "min(66px, 5vw)";
 const BAR_BORDER = "6px solid #fff";
 
-/** Reasigna el scroll a secciones con pesos distintos.
- *  Queremos: intro 10% · text 20% · loading 50% · done 20%
- */
+/** Reasigna el scroll: intro 10% · text 20% · loading 50% · done 20% */
 function warpProgress(
   p: number,
   weights = [0.06, 0.5, 0.8, 0.5],
@@ -45,7 +46,7 @@ function warpProgress(
   const inCum = [0, w[0], w[0] + w[1], w[0] + w[1] + w[2], 1];
   const ltot = logical.reduce((a, b) => a + b, 0);
   const l = logical.map((v) => v / ltot);
-  const outCum = [0, l[0], l[0] + l[1], l[0] + l[1] + l[2], 1];
+  const outCum = [0, l[0], l[0] + l[1], l[0] + l[2], 1];
 
   if (p <= inCum[1])
     return (
@@ -75,7 +76,7 @@ function BlueBackdrop({ opacity = 1 }: { opacity?: number }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "#1227e6", // azul de intro
+        background: "#1227e6",
         zIndex: 0,
         pointerEvents: "none",
         opacity,
@@ -88,6 +89,8 @@ function BlueBackdrop({ opacity = 1 }: { opacity?: number }) {
 export default function TextOverlay({ progress }: { progress: number }) {
   const mounted = useMounted();
   const p = warpProgress(progress);
+  const { muted } = useMute();
+  const { play } = useSfx();
 
   const phase = useMemo(() => {
     if (p < 0.25) return "intro";
@@ -98,9 +101,22 @@ export default function TextOverlay({ progress }: { progress: number }) {
 
   const loadK = easeOutCubic(clamp01((p - 0.5) / 0.25));
 
-  // Opacidad del backdrop: 1 siempre, excepto en "done" donde hace fade 1→0
-  const doneK = clamp01((p - 0.75) / 0.25); // 0..1 dentro de "done"
+  // Opacidad del backdrop: 1, salvo en "done" donde fidea 1→0
+  const doneK = clamp01((p - 0.75) / 0.25);
   const backdropOpacity = phase === "done" ? 1 - easeOutCubic(doneK) : 1;
+
+  // Volumen del ambient azul
+  const ambientVolume = 0.18 * (phase === "done" ? 1 - easeOutCubic(doneK) : 1);
+
+  // Choir al entrar en "loading" (una vez)
+  const prevPhaseRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (!muted && phase === "loading" && prev !== "loading") {
+      play("choir", { volume: 0.6 });
+    }
+  }, [phase, muted, play]);
 
   return (
     <div
@@ -108,16 +124,22 @@ export default function TextOverlay({ progress }: { progress: number }) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 2, // por encima del Canvas
+        zIndex: 2,
         pointerEvents: "none",
         display: "grid",
         placeItems: "center",
       }}
     >
-      {/* Fondo azul sólido (con fade-out al final) */}
+      {/* Ambient azul con fade-out al final */}
+      <AmbientAudio
+        src="/audio/digital-highway-73608.mp3"
+        volume={ambientVolume}
+        fadeMs={320}
+        pauseOnHidden
+      />
+
       <BlueBackdrop opacity={backdropOpacity} />
 
-      {/* Evita FOUC: muestro el zócalo cuando montó el cliente */}
       {mounted && <MarqueeBorder />}
 
       <div
@@ -127,7 +149,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
           placeItems: "center",
           gap: 24,
           position: "relative",
-          zIndex: 1, // por encima del backdrop
+          zIndex: 1,
         }}
       >
         {phase === "loading" ? (
