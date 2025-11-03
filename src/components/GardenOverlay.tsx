@@ -144,11 +144,11 @@ export default function GardenOverlay() {
   // 🔊 sonido
   const muted = useMuteStore((s) => s.muted);
   const toggleMute = useMuteStore((s) => s.toggleMute);
-  const { playFile } = useSfx();
+  const { play } = useSfx();
   const playSfx = React.useCallback(() => {
     if (muted) return;
-    playFile([{ src: "/audio/plant.mp3", type: "audio/mpeg" }]);
-  }, [muted, playFile]);
+    play("plant", { volume: 0.6 });
+  }, [muted, play]);
 
   const myId = React.useMemo(
     () => (typeof window !== "undefined" ? getUserId() : "anon"),
