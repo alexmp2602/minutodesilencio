@@ -1,214 +1,187 @@
-// src/components/GardenOverlay.tsx
 "use client";
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import useSWR from "swr";
-import { fetcher } from "@/lib/fetcher";
-import type { Flower } from "@/lib/types";
+import { getSupabaseBrowser } from "@/lib/supabaseBrowser";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { Message } from "@/lib/types";
 import TI from "@/components/ui/TablerIcon";
 import { useMuteStore } from "@/state/muteStore";
 import useSfx from "@/hooks/useSfx";
-import MessageDock from "@/components/ui/MessageDock";
 
-/* --------------------------------- Types --------------------------------- */
-type FlowersResponse = { flowers: Flower[] };
-const VARIANTS = ["rose", "tulip", "daisy"] as const;
-type Variant = (typeof VARIANTS)[number];
+/* ----------------------------- Tipos ----------------------------- */
+type Msg = {
+  id: string;
+  text: string;
+  ts: number;
+  user_id: string | null;
+  user_name: string | null;
+};
 
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null;
-
-/* --------------------------------- Utils --------------------------------- */
+/* ----------------------------- Utilidades ----------------------------- */
 const clamp = (n: number, a = 0, b = 99) => Math.max(a, Math.min(b, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const nowTs = () => Date.now();
+const STORAGE_KEY = "mds:messages";
+const MAX_LOCAL = 120;
+const LIMIT_FETCH = 120;
 
-/* ----------------------------- UUID seguro ----------------------------- */
-function safeUUID(): string {
+function readStorage(): Msg[] {
   try {
-    if (
-      typeof crypto !== "undefined" &&
-      typeof crypto.randomUUID === "function"
-    )
-      return crypto.randomUUID();
-  } catch {}
-  try {
-    if (
-      typeof crypto !== "undefined" &&
-      typeof crypto.getRandomValues === "function"
-    ) {
-      const b = new Uint8Array(16);
-      crypto.getRandomValues(b);
-      b[6] = (b[6] & 0x0f) | 0x40;
-      b[8] = (b[8] & 0x3f) | 0x80;
-      const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-      return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(
-        16,
-        20
-      )}-${h.slice(20)}`;
-    }
-  } catch {}
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/* --------------------------- Identidad local --------------------------- */
-function getUserId(): string {
-  if (typeof window === "undefined") return "anon";
-  const KEY = "ms:userId";
-  let id: string | null = null;
-  try {
-    id = localStorage.getItem(KEY);
-  } catch {}
-  if (!id) {
-    id = safeUUID();
-    try {
-      localStorage.setItem(KEY, id);
-    } catch {}
-  }
-  return id;
-}
-function getUserName(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem("ms:userName");
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (m) =>
+        m &&
+        typeof m.id === "string" &&
+        typeof m.text === "string" &&
+        typeof m.ts === "number"
+    );
   } catch {
-    return null;
+    return [];
   }
 }
-
-/* -------------------------- Persistencia local -------------------------- */
-type LastFlower = { x: number; y: number; z: number; id?: string };
-const LAST_KEY = "ms:lastFlower";
-function saveLastFlower(pos: LastFlower) {
+function writeStorage(arr: Msg[]) {
   try {
-    localStorage.setItem(LAST_KEY, JSON.stringify(pos));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(arr.slice(0, MAX_LOCAL)));
   } catch {}
 }
-function readLastFlower(): LastFlower | null {
-  try {
-    const raw = localStorage.getItem(LAST_KEY);
-    if (!raw) return null;
-    const j = JSON.parse(raw) as unknown;
-    if (
-      isRecord(j) &&
-      typeof j.x === "number" &&
-      typeof j.y === "number" &&
-      typeof j.z === "number"
-    ) {
-      const jj = j as { x: number; y: number; z: number; id?: string };
-      return { x: jj.x, y: jj.y, z: jj.z, id: jj.id };
-    }
-  } catch {}
-  return null;
-}
 
-/* --------------------------- Comunicación 3D --------------------------- */
-function askSceneForPlantPosition(): Promise<
-  readonly [number, number, number]
-> {
-  return new Promise((resolve) => {
-    const once = (e: Event) => {
-      const de = e as CustomEvent<{ position: [number, number, number] }>;
-      window.removeEventListener("ms:plant:done", once as EventListener);
-      resolve(de.detail.position);
-    };
-    window.addEventListener("ms:plant:done", once as EventListener, {
-      once: true,
-    });
-    window.dispatchEvent(new CustomEvent("ms:plant"));
-  });
+/* ------------------------- Zócalo superior (solo reales) ------------------------- */
+function TopMessageTape({ items }: { items: Msg[] }) {
+  // deduplico por texto normalizado y preparo "píldoras" con hashtag a la izquierda
+  const pills = React.useMemo(() => {
+    const uniq = Array.from(
+      new Map(
+        (items ?? [])
+          .map((m) => ({
+            id: m.id,
+            txt: (m.text ?? "").replace(/\s+/g, " ").trim(),
+            ts: m.ts,
+          }))
+          .filter((m) => m.txt.length > 0)
+          .map((m) => [m.txt.toLowerCase(), m])
+      ).values()
+    );
+
+    const safe = uniq.length
+      ? uniq
+      : [{ id: "void", txt: "Dejá tu mensaje…", ts: 0 }];
+
+    return safe.map((m) => (
+      <span key={`${m.id}-${m.ts}`} className="pill">
+        <span className="hash"> #</span>
+        {m.txt}
+      </span>
+    ));
+  }, [items]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        top: 0,
+        zIndex: 95,
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        style={{
+          background: "rgba(255,255,255,.12)",
+          borderBottom: "3px solid #fff",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <div className="tapeTop">
+          <div className="inner">
+            {pills}
+            {pills} {/* duplico la secuencia para loop continuo */}
+          </div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        .tapeTop {
+          position: relative;
+          color: #fff;
+          font-size: clamp(13px, 1.6vw, 18px);
+          white-space: nowrap;
+          padding: 10px 0;
+          text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); /* 👈 agrega profundidad */
+        }
+        .tapeTop::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            to bottom,
+            rgba(0, 0, 0, 0.3),
+            rgba(0, 0, 0, 0.15)
+          ); /* 👈 capa oscura detrás */
+          backdrop-filter: blur(8px) saturate(140%);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+          z-index: -1;
+        }
+        .tapeTop .inner {
+          display: inline-block;
+          animation: mscroll 28s linear infinite;
+          mix-blend-mode: screen; /* 👈 mantiene el brillo en fondos oscuros */
+        }
+        .pill {
+          display: inline-block;
+          padding: 2px 10px;
+          border: 1px solid rgba(255, 255, 255, 0.5);
+          border-radius: 999px;
+          margin-inline: 6px;
+          background: rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(6px);
+        }
+        @keyframes mscroll {
+          from {
+            transform: translateX(0);
+          }
+          to {
+            transform: translateX(-50%);
+          }
+        }
+      `}</style>
+    </div>
+  );
 }
 
 /* ======================================================================= */
 export default function GardenOverlay() {
-  const { data, error, mutate } = useSWR<FlowersResponse>(
-    "/api/flowers",
-    fetcher,
-    { revalidateOnFocus: false, revalidateOnReconnect: true }
-  );
-
-  const [pending, setPending] = React.useState(false);
-  const [msg, setMsg] = React.useState("");
-  const [errMsg, setErrMsg] = React.useState<string | null>(null);
   const [portalEl, setPortalEl] = React.useState<Element | null>(null);
   React.useEffect(() => setPortalEl(document.body), []);
 
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
-
-  const flowers = React.useMemo(() => data?.flowers ?? [], [data]);
-
-  const [idx, setIdx] = React.useState(0);
-  const variant = VARIANTS[idx]!;
-
-  // 🔊 sonido
+  /* ---------- Sonido ---------- */
   const muted = useMuteStore((s) => s.muted);
   const toggleMute = useMuteStore((s) => s.toggleMute);
   const { play } = useSfx();
-  const playSfx = React.useCallback(() => {
-    if (muted) return;
-    play("plant", { volume: 0.6 });
-  }, [muted, play]);
 
-  const myId = React.useMemo(
-    () => (typeof window !== "undefined" ? getUserId() : "anon"),
-    []
-  );
-  const myLastFromApi = React.useMemo(
-    () => (flowers as Flower[]).find((f) => f.user_id === myId) ?? null,
-    [flowers, myId]
-  );
-  const myLastFromLocal = React.useMemo(readLastFlower, []);
-  const myLastFlower = React.useMemo(
-    () =>
-      myLastFromApi ??
-      (myLastFromLocal && {
-        id: myLastFromLocal.id ?? "local",
-        x: myLastFromLocal.x,
-        y: myLastFromLocal.y,
-        z: myLastFromLocal.z,
-      }),
-    [myLastFromApi, myLastFromLocal]
-  );
-
-  /* ---------------- Progreso “matar flores” (barra vertical) ---------------- */
-  const [progress, setProgress] = React.useState(0); // 0..99
+  /* ---------- Barra de progreso ---------- */
+  const [progress, setProgress] = React.useState(0);
   const targetRef = React.useRef(0);
-
-  const KILL_INCREMENT = 7;
   const DECAY_PER_SEC = 1.2;
   const EASE = 0.12;
 
-  // Test helper
-  React.useEffect(() => {
-    (window as Window & { msTestKill?: () => void }).msTestKill = () =>
-      window.dispatchEvent(new CustomEvent("ms:flower:killed"));
-  }, []);
-
-  // Progreso desde la escena
   React.useEffect(() => {
     const onProgress = (e: Event) => {
       const de = e as CustomEvent<{ percent?: number }>;
       const p = de?.detail?.percent;
-      if (typeof p === "number" && Number.isFinite(p)) {
-        targetRef.current = clamp(Math.floor(p * 100));
-      }
+      if (typeof p === "number") targetRef.current = clamp(Math.floor(p * 100));
     };
-    const onKill = () => {
-      targetRef.current = clamp(targetRef.current + KILL_INCREMENT);
-    };
-    const onRegrow = () => {
-      targetRef.current = clamp(targetRef.current - 6);
-    };
+    const onKill = () => (targetRef.current = clamp(targetRef.current + 7));
+    const onRegrow = () => (targetRef.current = clamp(targetRef.current - 6));
 
     window.addEventListener("ms:flowers:progress", onProgress as EventListener);
     window.addEventListener("ms:flowers:kill", onKill as EventListener);
     window.addEventListener("ms:flower:killed", onKill as EventListener);
     window.addEventListener("ms:flower:regrow", onRegrow as EventListener);
-
     return () => {
       window.removeEventListener(
         "ms:flowers:progress",
@@ -220,22 +193,21 @@ export default function GardenOverlay() {
     };
   }, []);
 
-  // Decaimiento natural
   React.useEffect(() => {
-    const id = window.setInterval(() => {
+    const id = setInterval(() => {
       targetRef.current = clamp(targetRef.current - DECAY_PER_SEC);
     }, 1000);
-    return () => window.clearInterval(id);
+    return () => clearInterval(id);
   }, []);
 
-  // Easing hacia el target
   React.useEffect(() => {
     let raf = 0;
     const tick = () => {
       setProgress((p) => {
         const next = lerp(p, targetRef.current, EASE);
-        if (Math.abs(next - targetRef.current) < 0.05) return targetRef.current;
-        return next;
+        return Math.abs(next - targetRef.current) < 0.05
+          ? targetRef.current
+          : next;
       });
       raf = requestAnimationFrame(tick);
     };
@@ -243,226 +215,132 @@ export default function GardenOverlay() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Cuando se complete el “silencio”, enfocamos el input para invitar a escribir
-  React.useEffect(() => {
-    const onDone = () => inputRef.current?.focus();
-    window.addEventListener("silence:completed", onDone as EventListener, {
-      once: true,
-    });
-    return () =>
-      window.removeEventListener("silence:completed", onDone as EventListener);
-  }, []);
-
-  /* ---------------- Navegar hasta mi flor ---------------- */
-  type OrbitControlsLike = {
-    target: { set: (x: number, y: number, z: number) => void };
-    object: { position: { set: (x: number, y: number, z: number) => void } };
-    update?: () => void;
-  };
-  const goToMyFlower = React.useCallback(() => {
-    if (!myLastFlower) return;
-    const { x: fx, y: fy, z: fz } = myLastFlower;
-    const controls = (window as { __controls?: OrbitControlsLike })?.__controls;
-    if (controls?.target && controls?.object) {
-      controls.target.set(fx ?? 0, (fy ?? 0) + 0.6, fz ?? 0);
-      controls.object.position.set((fx ?? 0) + 4, (fy ?? 0) + 3, (fz ?? 0) + 4);
-      controls.update?.();
-    }
-  }, [myLastFlower]);
-
-  /* ---------------- Crear / actualizar flor ---------------- */
-  async function createFlower(message: string) {
-    setErrMsg(null);
-    setPending(true);
-    try {
-      const [px, py, pz] = await askSceneForPlantPosition();
-
-      await mutate(
-        async (current?: FlowersResponse): Promise<FlowersResponse> => {
-          const res = await fetch("/api/flowers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message: message || undefined,
-              x: px,
-              y: py,
-              z: pz,
-              variant,
-              user_id: myId,
-              user_name: getUserName(),
-            }),
-          });
-
-          let json: unknown = null;
-          try {
-            json = await res.json();
-          } catch {}
-
-          if (!res.ok) {
-            const apiError =
-              isRecord(json) && typeof json.error === "string"
-                ? json.error
-                : `HTTP ${res.status}`;
-            throw new Error(apiError);
-          }
-
-          const real = isRecord(json)
-            ? (json as { flower?: Flower }).flower ?? null
-            : null;
-          const withPos: Flower | null = real
-            ? ({ ...(real as Flower), x: px, y: py, z: pz } as Flower)
-            : null;
-
-          if (withPos) saveLastFlower({ x: px, y: py, z: pz, id: withPos.id });
-          playSfx();
-
-          const prev = current?.flowers ?? [];
-          const next = [withPos, ...prev].filter(Boolean) as Flower[];
-          return { flowers: next };
-        },
-        {
-          optimisticData: {
-            flowers: [
-              {
-                id: `temp-${Date.now()}`,
-                message: message || null,
-                color: null,
-                created_at: new Date().toISOString(),
-                x: 0,
-                y: 0,
-                z: 0,
-                family: variant,
-                user_id: myId,
-                user_name: getUserName(),
-              },
-              ...(data?.flowers ?? []),
-            ],
-          },
-          rollbackOnError: true,
-          revalidate: true,
-        }
-      );
-    } catch (err: unknown) {
-      setErrMsg(
-        err instanceof Error ? err.message : "No se pudo plantar la flor."
-      );
-      console.error(err);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function updateMyFlower(messageFromUI: string) {
-    if (!myLastFromApi?.id) {
-      await mutate();
-      setErrMsg("No encontramos tu flor en el servidor. Probá recargar.");
-      return;
-    }
-
-    setErrMsg(null);
-    setPending(true);
-
-    const cleaned = (messageFromUI ?? "").replace(/\s+/g, " ").trim();
-    const payload: { message: string | null } = {
-      message: cleaned ? cleaned.slice(0, 140) : null,
-    };
-
-    try {
-      const res = await fetch(`/api/flowers/${myLastFromApi.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: payload.message }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await mutate((current?: FlowersResponse) => {
-        const prev = current?.flowers ?? [];
-        const next = prev.map((f) =>
-          f.id === myLastFromApi!.id ? { ...f, message: payload.message } : f
-        );
-        return { flowers: next };
-      });
-    } catch (e: unknown) {
-      setErrMsg(
-        e instanceof Error
-          ? `No se pudo guardar en el servidor (${e.message}).`
-          : "No se pudo guardar en el servidor."
-      );
-    } finally {
-      setPending(false);
-    }
-  }
-
-  /* ---------------- Submit handler ---------------- */
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (pending) return;
-    const message = msg;
-    if (myLastFromApi) updateMyFlower(message);
-    else createFlower(message);
-  };
-
-  const labelFor = (v: Variant) =>
-    v === "tulip" ? "Tulipán" : v === "daisy" ? "Margarita" : "Rosa";
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !pending) {
-      e.preventDefault();
-      onSubmit(e as unknown as React.FormEvent<HTMLFormElement>);
-    }
-  };
-
-  /* ---------------- Mensajitos flotantes ---------------- */
-  const [floaties, setFloaties] = React.useState<
-    { id: number; text: string; left: number }[]
-  >([]);
-  const nextId = React.useRef(1);
-  const tagIdx = React.useRef(0);
+  /* ---------- Mensajes (Supabase realtime) ---------- */
+  const [open, setOpen] = React.useState(false);
+  const [txt, setTxt] = React.useState("");
+  const [items, setItems] = React.useState<Msg[]>([]);
+  const [online, setOnline] = React.useState<"sb" | "local">("local");
+  const chRef = React.useRef<RealtimeChannel | null>(null);
 
   React.useEffect(() => {
-    const TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
-    const onKill = () => {
-      const id = nextId.current++;
-      const text = TAGS[tagIdx.current++ % TAGS.length];
-      const left = 24 + Math.random() * 260;
-      setFloaties((arr) => [...arr, { id, text, left }]);
-      window.setTimeout(
-        () => setFloaties((arr) => arr.filter((f) => f.id !== id)),
-        1600
-      );
+    let cancelled = false;
+    (async () => {
+      try {
+        const sb = getSupabaseBrowser();
+        setOnline("sb");
+        const { data, error } = await sb
+          .from("messages")
+          .select("id,text,user_id,user_name,created_at")
+          .order("created_at", { ascending: false })
+          .limit(LIMIT_FETCH);
+        if (error) throw error;
+
+        const rows = (data ?? []) as Message[];
+        const mapped: Msg[] = rows.map((m) => ({
+          id: String(m.id),
+          text: String(m.text ?? ""),
+          ts: Date.parse(m.created_at ?? new Date().toISOString()),
+          user_id: m.user_id ?? null,
+          user_name: m.user_name ?? null,
+        }));
+        if (!cancelled) setItems(mapped);
+
+        const ch = sb
+          .channel("messages-feed")
+          .on(
+            "postgres_changes",
+            { event: "INSERT", schema: "public", table: "messages" },
+            (payload: { new: Message }) => {
+              const r = payload.new;
+              setItems((arr) => {
+                if (arr.some((x) => x.id === r.id)) return arr;
+                const msg: Msg = {
+                  id: r.id,
+                  text: r.text,
+                  ts: Date.parse(r.created_at ?? new Date().toISOString()),
+                  user_id: r.user_id ?? null,
+                  user_name: r.user_name ?? null,
+                };
+                return [msg, ...arr].slice(0, LIMIT_FETCH);
+              });
+            }
+          )
+          .subscribe();
+        chRef.current = ch;
+      } catch {
+        setOnline("local");
+        setItems(readStorage());
+      }
+    })();
+    return () => {
+      cancelled = true;
+      chRef.current?.unsubscribe();
     };
-    window.addEventListener("ms:flowers:kill", onKill as EventListener);
-    return () =>
-      window.removeEventListener("ms:flowers:kill", onKill as EventListener);
   }, []);
 
-  /* ---------------- UI ---------------- */
+  async function submitMessage() {
+    const text = txt.trim().slice(0, 50);
+    if (!text) return;
+    setTxt("");
+
+    if (online === "sb") {
+      try {
+        const sb = getSupabaseBrowser();
+        const tempId = crypto.randomUUID();
+        const optimistic: Msg = {
+          id: tempId,
+          text,
+          ts: nowTs(),
+          user_id: null,
+          user_name: null,
+        };
+        setItems((arr) => [optimistic, ...arr].slice(0, LIMIT_FETCH));
+        const { data, error } = await sb
+          .from("messages")
+          .insert({ text })
+          .select("id,text,user_id,user_name,created_at")
+          .maybeSingle();
+        if (error || !data) throw new Error("Error al guardar");
+        const real: Msg = {
+          id: String(data.id),
+          text: String(data.text ?? ""),
+          ts: Date.parse(data.created_at ?? new Date().toISOString()),
+          user_id: data.user_id ?? null,
+          user_name: data.user_name ?? null,
+        };
+        setItems((arr) => {
+          const w = arr.filter((m) => m.id !== tempId);
+          if (w.some((x) => x.id === real.id)) return w;
+          return [real, ...w].slice(0, LIMIT_FETCH);
+        });
+        if (!muted) play("plant", { volume: 0.55 });
+        return;
+      } catch {}
+    }
+
+    const msg: Msg = {
+      id: crypto.randomUUID(),
+      text,
+      ts: nowTs(),
+      user_id: null,
+      user_name: null,
+    };
+    const updated = [msg, ...items].slice(0, MAX_LOCAL);
+    setItems(updated);
+    writeStorage(updated);
+    if (!muted) play("plant", { volume: 0.55 });
+  }
+
+  /* ---------------------------- UI ---------------------------- */
   const ui = (
     <div
-      className="ms-garden-overlay"
-      aria-live="polite"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 70,
-        pointerEvents: "none",
-      }}
+      style={{ position: "fixed", inset: 0, zIndex: 70, pointerEvents: "none" }}
     >
-      {/* Solapa de mensajes en el borde superior */}
-      <MessageDock maxLen={80} />
+      {/* ZÓCALO SUPERIOR: SOLO MENSAJES REALES */}
+      <TopMessageTape items={items} />
 
-      {/* Anim para floaties */}
-      <style>{`
-      @keyframes ms-float-up {
-        0%   { transform: translateY(0px);   opacity: 0; }
-        10%  { opacity: 1; }
-        100% { transform: translateY(-52px); opacity: 0; }
-      }
-      `}</style>
-
-      {/* 🟩 Barra vertical (loop progreso) */}
+      {/* 🟩 Barra vertical */}
       <div
-        aria-label="Progreso de destrucción de flores"
-        role="status"
         style={{
           position: "fixed",
           top: "50%",
@@ -480,12 +358,10 @@ export default function GardenOverlay() {
           gridTemplateRows: "1fr auto",
           padding: 6,
         }}
-        title="Nunca llega a 100%: crecen de nuevo"
       >
         <div
           style={{
             position: "relative",
-            alignSelf: "stretch",
             width: "100%",
             borderRadius: 8,
             overflow: "hidden",
@@ -498,22 +374,20 @@ export default function GardenOverlay() {
               bottom: 0,
               left: 0,
               width: "100%",
-              height: `${Math.max(1, (Math.floor(progress) / 100) * 100)}%`,
+              height: `${Math.floor(progress)}%`,
               borderRadius: 8,
               transition: "height .25s ease",
-              background: "linear-gradient(to top, #58c48d, #b5e8c8)",
-              boxShadow: "inset 0 0 12px rgba(0,0,0,.12)",
+              background: "linear-gradient(to top,#58c48d,#b5e8c8)",
             }}
           />
         </div>
-
         <div
           style={{
             marginTop: 6,
             textAlign: "center",
             fontWeight: 800,
             fontSize: 13,
-            color: "var(--text-strong, #2b3b46)",
+            color: "#2b3b46",
             textShadow: "0 1px 0 rgba(255,255,255,.6)",
             userSelect: "none",
           }}
@@ -522,193 +396,188 @@ export default function GardenOverlay() {
         </div>
       </div>
 
-      {/* 🔸 Barra inferior (formulario) */}
-      <form
-        className="plant-bar"
-        onSubmit={onSubmit}
-        aria-busy={pending}
+      {/* 🔻 Interfaz inferior: SOLO formulario (sin tira) */}
+      <div
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onTouchStart={() => setOpen(true)}
         style={{
           position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          bottom: "max(16px, calc(16px + var(--sa-b, 0px)))",
-          width: "min(1100px, 92vw)",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 90,
           pointerEvents: "auto",
-          background: "rgba(255,255,245,.85)",
-          borderRadius: 16,
-          boxShadow: "0 6px 24px rgba(0,0,0,.15)",
-          backdropFilter: "blur(10px)",
-          padding: 16,
         }}
       >
         <div
-          className="plant-header"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 10,
-            flexWrap: "wrap",
+            margin: "0 auto",
+            width: "min(1200px, 94vw)",
+            transform: `translateY(${open ? "0%" : "70%"})`,
+            transition: "transform .25s ease",
           }}
         >
           <div
-            className="panel-title font-mono"
             style={{
-              fontWeight: 400,
-              fontSize: "clamp(18px, 2.1vw, 22px)",
-              letterSpacing: "0.01em",
-              lineHeight: 1.25,
-              color: "#2b3b46",
+              background: "rgba(255, 255, 255, 0.08)",
+              borderTop: "1px solid rgba(255, 255, 255, 0.35)",
+              borderLeft: "1px solid rgba(255, 255, 255, 0.25)",
+              borderRight: "1px solid rgba(255, 255, 255, 0.25)",
+              backdropFilter: "blur(10px) saturate(180%)",
+              boxShadow:
+                "0 6px 20px rgba(0,0,0,0.25), inset 0 0 10px rgba(255,255,255,0.1)",
+              borderRadius: "16px 16px 0 0",
+              overflow: "hidden",
             }}
           >
-            Cada flor es una despedida. Dejá tu mensaje.
-          </div>
-
-          <div className="header-actions" style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={goToMyFlower}
-              disabled={!myLastFlower}
-              title={myLastFlower ? "Ir a mi flor" : "Aún no plantaste"}
-              aria-label="Ir a mi flor"
-            >
-              <TI name="goto" />
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={toggleMute}
-              aria-label={muted ? "Activar sonido" : "Silenciar sonido"}
-              title={muted ? "Activar sonido" : "Silenciar sonido"}
-            >
-              <TI name={muted ? "volume-off" : "volume"} />
-            </button>
-          </div>
-        </div>
-
-        <div
-          className="plant-row"
-          style={{
-            display: "grid",
-            gridTemplateColumns: myLastFromApi ? "1fr auto" : "1fr auto auto",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <label htmlFor="plant-msg" className="sr-only">
-            Mensaje (opcional, 140 máx.)
-          </label>
-          <input
-            ref={inputRef}
-            id="plant-msg"
-            name="message"
-            value={msg}
-            onChange={(e) => setMsg(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={
-              myLastFromApi
-                ? myLastFromApi.message
-                  ? "Editar tu mensaje…"
-                  : "Dejar un mensaje en tu flor…"
-                : "Dejar un mensaje…"
-            }
-            maxLength={140}
-            className="input"
-            autoComplete="off"
-            disabled={pending}
-            style={{
-              width: "100%",
-              height: 44,
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,.08)",
-              padding: "0 12px",
-            }}
-          />
-
-          {!myLastFromApi && (
-            <div
-              className="picker"
-              aria-label="Elegir tipo de flor"
-              role="group"
-              style={{ display: "flex", alignItems: "center", gap: 8 }}
-            >
-              <button
-                type="button"
-                className="picker-btn"
-                onClick={() =>
-                  setIdx((i) => (i + VARIANTS.length - 1) % VARIANTS.length)
+            <div style={{ display: "flex", gap: 8, padding: 10 }}>
+              <input
+                value={txt}
+                onChange={(e) => setTxt(e.target.value)}
+                maxLength={50}
+                placeholder={
+                  online === "sb"
+                    ? "Escribí tu mensaje (se comparte en vivo)…"
+                    : "Escribí tu mensaje (local)…"
                 }
-                aria-label="Anterior"
-                title="Anterior"
-                disabled={pending}
-              >
-                <TI name="chev-left" />
-              </button>
-
-              <div
-                className="picker-current"
-                title={labelFor(variant)}
-                aria-live="polite"
-              >
-                {variant === "tulip" && <TI name="tulip" />}
-                {variant === "daisy" && <TI name="daisy" />}
-                {variant === "rose" && <TI name="rose" />}
-              </div>
-
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,.8)",
+                  background: "rgba(255,255,255,.9)",
+                  outline: "none",
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submitMessage();
+                  }
+                }}
+              />
               <button
-                type="button"
-                className="picker-btn"
-                onClick={() => setIdx((i) => (i + 1) % VARIANTS.length)}
-                aria-label="Siguiente"
-                title="Siguiente"
-                disabled={pending}
+                onClick={submitMessage}
+                style={{
+                  padding: "10px 22px",
+                  borderRadius: 14,
+                  border: "none",
+                  background: "linear-gradient(135deg, #345CFF, #6786FF)",
+                  boxShadow:
+                    "0 4px 15px rgba(0, 0, 0, 0.35), inset 0 0 8px rgba(255,255,255,0.25)",
+                  color: "#fff",
+                  fontWeight: 600,
+                  fontSize: 15,
+                  letterSpacing: 0.2,
+                  cursor: "pointer",
+                  transition: "all 0.25s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.filter = "brightness(1.15)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.filter = "brightness(1)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
               >
-                <TI name="chev-right" />
+                Publicar
+              </button>
+              <button
+                onClick={toggleMute}
+                className="icon-btn"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(255,255,255,0.35)",
+                  background: "rgba(255,255,255,0.15)",
+                  backdropFilter: "blur(6px) saturate(150%)",
+                  boxShadow:
+                    "inset 0 0 6px rgba(255,255,255,0.15), 0 2px 8px rgba(0,0,0,0.3)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  transition: "all 0.25s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.25)";
+                  e.currentTarget.style.transform = "scale(1.05)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.15)";
+                  e.currentTarget.style.transform = "scale(1)";
+                }}
+              >
+                <TI
+                  name={muted ? "volume-off" : "volume"}
+                  size={20}
+                  stroke={2}
+                  style={{ opacity: 0.9 }}
+                />
               </button>
             </div>
-          )}
+          </div>
 
-          <button
-            type="submit"
-            className="btn-cta"
-            aria-disabled={pending}
-            disabled={pending}
+          {/* lengüeta */}
+          <div
+            aria-hidden
             style={{
-              height: 44,
-              borderRadius: 12,
-              padding: "0 16px",
-              background: "#2e6461",
-              color: "#fff",
-              fontWeight: 700,
-              transition: "background .2s ease",
+              position: "absolute",
+              left: "50%",
+              top: -14,
+              transform: "translateX(-50%)",
+              width: 84,
+              height: 6,
+              borderRadius: 999,
+              background: "rgba(255,255,255,.25)",
             }}
-          >
-            {pending
-              ? myLastFromApi
-                ? "Guardando…"
-                : "Plantando…"
-              : myLastFromApi
-              ? "Actualizar"
-              : "Plantar"}
-          </button>
+          />
         </div>
+      </div>
 
-        {error && (
-          <div role="status" style={{ marginTop: 8, color: "#333" }}>
-            No se pudieron cargar las flores.
-          </div>
-        )}
-        {errMsg && (
-          <div role="alert" style={{ marginTop: 12, color: "#ff4d4d" }}>
-            {errMsg}
-          </div>
-        )}
-      </form>
+      <Floaties />
+    </div>
+  );
 
-      {/* Mensajes flotantes */}
-      {floaties.map((f) => (
+  if (!portalEl) return null;
+  return createPortal(ui, portalEl);
+}
+
+/* ----------------------- Floaties ----------------------- */
+function Floaties() {
+  const [arr, setArr] = React.useState<
+    { id: number; text: string; left: number }[]
+  >([]);
+  const nextId = React.useRef(1);
+  const tagIdx = React.useRef(0);
+
+  React.useEffect(() => {
+    const TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
+    const onKill = () => {
+      const id = nextId.current++;
+      const text = TAGS[tagIdx.current++ % TAGS.length];
+      const left = 24 + Math.random() * 260;
+      setArr((a) => [...a, { id, text, left }]);
+      setTimeout(() => setArr((a) => a.filter((f) => f.id !== id)), 1600);
+    };
+    window.addEventListener("ms:flowers:kill", onKill as EventListener);
+    return () =>
+      window.removeEventListener("ms:flowers:kill", onKill as EventListener);
+  }, []);
+
+  return (
+    <>
+      <style>{`
+        @keyframes ms-float-up {
+          0% { transform: translateY(0px); opacity: 0; }
+          10% { opacity: 1; }
+          100% { transform: translateY(-52px); opacity: 0; }
+        }
+      `}</style>
+      {arr.map((f) => (
         <div
           key={f.id}
           style={{
@@ -716,7 +585,7 @@ export default function GardenOverlay() {
             bottom: 200,
             left: f.left,
             fontWeight: 700,
-            fontSize: 14,
+            fontSize: 24,
             color: "rgba(255,255,255,.95)",
             textShadow: "0 1px 10px rgba(0,0,0,.4)",
             pointerEvents: "none",
@@ -726,9 +595,6 @@ export default function GardenOverlay() {
           {f.text}
         </div>
       ))}
-    </div>
+    </>
   );
-
-  if (!portalEl) return null;
-  return createPortal(ui, portalEl);
 }
