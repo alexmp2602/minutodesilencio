@@ -235,3 +235,14 @@ export type FlowerResponse = {
   flower: Flower;
   ok?: boolean;
 };
+
+/* ===========================
+   Mensajes (solapa superior)
+   =========================== */
+export type Message = {
+  id: string;
+  text: string;
+  created_at?: string | null;
+  user_id?: string | null;
+  user_name?: string | null;
+};

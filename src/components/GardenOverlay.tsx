@@ -9,6 +9,7 @@ import type { Flower } from "@/lib/types";
 import TI from "@/components/ui/TablerIcon";
 import { useMuteStore } from "@/state/muteStore";
 import useSfx from "@/hooks/useSfx";
+import MessageDock from "@/components/ui/MessageDock";
 
 /* --------------------------------- Types --------------------------------- */
 type FlowersResponse = { flowers: Flower[] };
@@ -91,14 +92,15 @@ function readLastFlower(): LastFlower | null {
   try {
     const raw = localStorage.getItem(LAST_KEY);
     if (!raw) return null;
-    const j = JSON.parse(raw);
+    const j = JSON.parse(raw) as unknown;
     if (
-      j &&
+      isRecord(j) &&
       typeof j.x === "number" &&
       typeof j.y === "number" &&
       typeof j.z === "number"
     ) {
-      return j as LastFlower;
+      const jj = j as { x: number; y: number; z: number; id?: string };
+      return { x: jj.x, y: jj.y, z: jj.z, id: jj.id };
     }
   } catch {}
   return null;
@@ -123,7 +125,7 @@ function askSceneForPlantPosition(): Promise<
 
 /* ======================================================================= */
 export default function GardenOverlay() {
-  const { data, isLoading, error, mutate } = useSWR<FlowersResponse>(
+  const { data, error, mutate } = useSWR<FlowersResponse>(
     "/api/flowers",
     fetcher,
     { revalidateOnFocus: false, revalidateOnReconnect: true }
@@ -135,8 +137,9 @@ export default function GardenOverlay() {
   const [portalEl, setPortalEl] = React.useState<Element | null>(null);
   React.useEffect(() => setPortalEl(document.body), []);
 
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+
   const flowers = React.useMemo(() => data?.flowers ?? [], [data]);
-  const total = flowers.length;
 
   const [idx, setIdx] = React.useState(0);
   const variant = VARIANTS[idx]!;
@@ -175,28 +178,25 @@ export default function GardenOverlay() {
   const [progress, setProgress] = React.useState(0); // 0..99
   const targetRef = React.useRef(0);
 
-  // Knobs
-  const KILL_INCREMENT = 7; // fallback si no llega percent
-  const DECAY_PER_SEC = 1.2; // baja suave (loop)
-  const EASE = 0.12; // easing de la UI
+  const KILL_INCREMENT = 7;
+  const DECAY_PER_SEC = 1.2;
+  const EASE = 0.12;
 
-  // Helper de test (opcional)
+  // Test helper
   React.useEffect(() => {
     (window as Window & { msTestKill?: () => void }).msTestKill = () =>
       window.dispatchEvent(new CustomEvent("ms:flower:killed"));
   }, []);
 
-  // Escuchar progreso desde la escena (preferido)
+  // Progreso desde la escena
   React.useEffect(() => {
     const onProgress = (e: Event) => {
       const de = e as CustomEvent<{ percent?: number }>;
       const p = de?.detail?.percent;
-      if (typeof p === "number" && isFinite(p)) {
+      if (typeof p === "number" && Number.isFinite(p)) {
         targetRef.current = clamp(Math.floor(p * 100));
       }
     };
-
-    // Compat: si solo llega el kill/regrow
     const onKill = () => {
       targetRef.current = clamp(targetRef.current + KILL_INCREMENT);
     };
@@ -220,12 +220,12 @@ export default function GardenOverlay() {
     };
   }, []);
 
-  // Decaimiento natural (las flores vuelven)
+  // Decaimiento natural
   React.useEffect(() => {
-    const id = setInterval(() => {
+    const id = window.setInterval(() => {
       targetRef.current = clamp(targetRef.current - DECAY_PER_SEC);
     }, 1000);
-    return () => clearInterval(id);
+    return () => window.clearInterval(id);
   }, []);
 
   // Easing hacia el target
@@ -243,10 +243,15 @@ export default function GardenOverlay() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const pct = Math.floor(progress);
-  const RAIL_W = 36;
-  const RAIL_H = 156;
-  const RAIL_RADIUS = 12;
+  // Cuando se complete el “silencio”, enfocamos el input para invitar a escribir
+  React.useEffect(() => {
+    const onDone = () => inputRef.current?.focus();
+    window.addEventListener("silence:completed", onDone as EventListener, {
+      once: true,
+    });
+    return () =>
+      window.removeEventListener("silence:completed", onDone as EventListener);
+  }, []);
 
   /* ---------------- Navegar hasta mi flor ---------------- */
   type OrbitControlsLike = {
@@ -407,7 +412,6 @@ export default function GardenOverlay() {
   };
 
   /* ---------------- Mensajitos flotantes ---------------- */
-  const TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
   const [floaties, setFloaties] = React.useState<
     { id: number; text: string; left: number }[]
   >([]);
@@ -415,12 +419,13 @@ export default function GardenOverlay() {
   const tagIdx = React.useRef(0);
 
   React.useEffect(() => {
+    const TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
     const onKill = () => {
       const id = nextId.current++;
       const text = TAGS[tagIdx.current++ % TAGS.length];
-      const left = 24 + Math.random() * 260; // posición horizontal
+      const left = 24 + Math.random() * 260;
       setFloaties((arr) => [...arr, { id, text, left }]);
-      setTimeout(
+      window.setTimeout(
         () => setFloaties((arr) => arr.filter((f) => f.id !== id)),
         1600
       );
@@ -428,7 +433,7 @@ export default function GardenOverlay() {
     window.addEventListener("ms:flowers:kill", onKill as EventListener);
     return () =>
       window.removeEventListener("ms:flowers:kill", onKill as EventListener);
-  });
+  }, []);
 
   /* ---------------- UI ---------------- */
   const ui = (
@@ -442,6 +447,9 @@ export default function GardenOverlay() {
         pointerEvents: "none",
       }}
     >
+      {/* Solapa de mensajes en el borde superior */}
+      <MessageDock maxLen={80} />
+
       {/* Anim para floaties */}
       <style>{`
       @keyframes ms-float-up {
@@ -460,10 +468,10 @@ export default function GardenOverlay() {
           top: "50%",
           left: 20,
           transform: "translateY(-50%)",
-          width: RAIL_W,
-          height: RAIL_H,
+          width: 36,
+          height: 156,
           pointerEvents: "auto",
-          borderRadius: RAIL_RADIUS,
+          borderRadius: 12,
           backdropFilter: "blur(8px)",
           background: "rgba(0,0,0,.25)",
           boxShadow:
@@ -479,7 +487,7 @@ export default function GardenOverlay() {
             position: "relative",
             alignSelf: "stretch",
             width: "100%",
-            borderRadius: RAIL_RADIUS - 4,
+            borderRadius: 8,
             overflow: "hidden",
             background: "rgba(255,255,255,.06)",
           }}
@@ -490,8 +498,8 @@ export default function GardenOverlay() {
               bottom: 0,
               left: 0,
               width: "100%",
-              height: `${Math.max(1, (pct / 100) * 100)}%`,
-              borderRadius: RAIL_RADIUS - 4,
+              height: `${Math.max(1, (Math.floor(progress) / 100) * 100)}%`,
+              borderRadius: 8,
               transition: "height .25s ease",
               background: "linear-gradient(to top, #58c48d, #b5e8c8)",
               boxShadow: "inset 0 0 12px rgba(0,0,0,.12)",
@@ -510,36 +518,11 @@ export default function GardenOverlay() {
             userSelect: "none",
           }}
         >
-          {pct}%
+          {Math.floor(progress)}%
         </div>
       </div>
 
-      {/* 🔹 Chip superior */}
-      <div
-        className="counter-chip"
-        role="status"
-        aria-live="polite"
-        title="Cantidad total de flores"
-        style={{
-          position: "fixed",
-          top: 12,
-          left: 20 + RAIL_W + 12,
-          color: "#fff",
-          background: "rgba(0,0,0,.25)",
-          border: "1px solid rgba(255,255,255,.2)",
-          boxShadow:
-            "0 3px 12px rgba(0,0,0,.18), inset 0 0 8px rgba(255,255,255,.1)",
-          backdropFilter: "blur(6px)",
-          borderRadius: 10,
-          padding: "6px 12px",
-          fontSize: 14,
-          pointerEvents: "auto",
-        }}
-      >
-        Últimas flores: <strong>{isLoading ? "…" : total}</strong>
-      </div>
-
-      {/* 🔸 Barra inferior (formulario existente) */}
+      {/* 🔸 Barra inferior (formulario) */}
       <form
         className="plant-bar"
         onSubmit={onSubmit}
@@ -618,6 +601,7 @@ export default function GardenOverlay() {
             Mensaje (opcional, 140 máx.)
           </label>
           <input
+            ref={inputRef}
             id="plant-msg"
             name="message"
             value={msg}

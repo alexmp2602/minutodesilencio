@@ -1,4 +1,3 @@
-// src/hooks/useSfx.ts
 "use client";
 import { useCallback, useRef } from "react";
 import { useMute } from "@/hooks/useMute";
@@ -14,10 +13,10 @@ type Bank = {
   cooldownMs: number;
 };
 type PlayOpts = {
-  volume?: number; // 0..1
-  rate?: number; // 1 = normal
-  detuneSemitones?: number; // +/- semitonos
-  allowOverlap?: boolean; // ignora cooldown
+  volume?: number;
+  rate?: number;
+  detuneSemitones?: number;
+  allowOverlap?: boolean;
 };
 
 const SUPPORTED_MIME = ["audio/mpeg", "audio/ogg", "audio/wav"];
@@ -26,20 +25,26 @@ function canPlayAny(probe: HTMLAudioElement, s: Src) {
   const type = s.type ?? "";
   if (!type) return true;
   if (!SUPPORTED_MIME.includes(type)) return false;
-  return !!probe.canPlayType(type);
+  return probe.canPlayType(type) !== "";
 }
 
 export default function useSfx() {
   const { muted } = useMute();
 
-  // bancos por id
   const banks = useRef<Map<string, Bank>>(new Map());
   const didDefault = useRef(false);
 
   const ensureDefaults = useCallback(() => {
     if (didDefault.current) return;
     didDefault.current = true;
-    // defaults del proyecto
+
+    // efecto al plantar (alias "plant")
+    register("plant", [{ src: "/audio/plant.mp3", type: "audio/mpeg" }], {
+      polyphony: 4,
+      cooldownMs: 60,
+    });
+
+    // alternativa cartoon (por si querés usarlo en otras interacciones)
     register(
       "flower-pop",
       [
@@ -50,6 +55,8 @@ export default function useSfx() {
       ],
       { polyphony: 4, cooldownMs: 70 }
     );
+
+    // coro para la intro
     register(
       "choir",
       [{ src: "/audio/angelic-choir-intro-257473.mp3", type: "audio/mpeg" }],
@@ -60,10 +67,7 @@ export default function useSfx() {
 
   const pickSupported = (sources: Src[]) => {
     const probe = document.createElement("audio");
-    for (const s of sources) {
-      if (canPlayAny(probe, s)) return s;
-    }
-    // último intento por extensión
+    for (const s of sources) if (canPlayAny(probe, s)) return s;
     return (
       sources.find((s) => {
         const u = s.src.toLowerCase();
@@ -115,12 +119,10 @@ export default function useSfx() {
       if (!opts.allowOverlap && now - bank.lastAt < bank.cooldownMs) return;
       bank.lastAt = now;
 
-      // round-robin
       const a = bank.pool[bank.idx];
       bank.idx = (bank.idx + 1) % bank.polyphony;
 
       try {
-        // reset rápido
         try {
           a.pause();
           a.currentTime = 0;
@@ -131,7 +133,6 @@ export default function useSfx() {
         a.volume = Math.max(0, Math.min(1, opts.volume ?? 1));
         await a.play();
       } catch {
-        // desbloqueo con primer interacción si el navegador lo exige
         const unlock = () => {
           a.play().finally(() => {
             window.removeEventListener("pointerdown", unlock);
