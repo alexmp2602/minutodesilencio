@@ -312,7 +312,7 @@ function EnvTint({ inGarden }: { inGarden: boolean }) {
   return null;
 }
 
-/* --------- globals --------- */
+/* --------- publica accesos globales --------- */
 function PublishGlobals({
   controlsRef,
 }: {
@@ -340,6 +340,54 @@ function PublishGlobals({
   return null;
 }
 
+/* --------- bucle de autoflight (vuelo tras el minuto) --------- */
+function AutoFlightLoop({
+  autoFlightRef,
+  controlsRef,
+  onFinish,
+}: {
+  autoFlightRef: React.MutableRefObject<{
+    t: number;
+    dur: number;
+    startPos: THREE.Vector3;
+    startTarget: THREE.Vector3;
+    endPos: THREE.Vector3;
+    endTarget: THREE.Vector3;
+  } | null>;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  onFinish: () => void;
+}) {
+  const { camera } = useThree();
+
+  useFrame((_, dt) => {
+    const f = autoFlightRef.current;
+    if (!f) return;
+
+    f.t += dt;
+    const k = easeInOut(clamp01(f.t / f.dur));
+
+    const camPos = new THREE.Vector3().lerpVectors(f.startPos, f.endPos, k);
+    const tgtPos = new THREE.Vector3().lerpVectors(f.startTarget, f.endTarget, k);
+
+    camera.position.copy(camPos);
+    (camera as THREE.PerspectiveCamera).lookAt(tgtPos);
+
+    const c = controlsRef.current;
+    if (c) {
+      c.object.position.copy(camPos);
+      c.target.copy(tgtPos);
+      c.update();
+    }
+
+    if (k >= 1) {
+      autoFlightRef.current = null;
+      onFinish();
+    }
+  });
+
+  return null;
+}
+
 export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
   const [dpr, setDpr] = useState<[number, number] | number>([1, 2]);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -361,6 +409,62 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
 
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // 🔹 destino y ref del vuelo automático post-minuto
+  const defaultTarget = useMemo(() => new THREE.Vector3(0, 0.6, 0), []);
+  const autoFlightRef = useRef<{
+    t: number;
+    dur: number;
+    startPos: THREE.Vector3;
+    startTarget: THREE.Vector3;
+    endPos: THREE.Vector3;
+    endTarget: THREE.Vector3;
+  } | null>(null);
+
+  // dispara el vuelo hacia el jardín
+  const startAutoEnter = useCallback(() => {
+    if (autoFlightRef.current || gardenActive) return;
+
+    const c = controlsRef.current || null;
+    const cam = (window.__camera as THREE.PerspectiveCamera | undefined) || null;
+
+    const startPos = cam ? cam.position.clone() : new THREE.Vector3(0, 28, 30);
+    const startTarget = c?.target?.clone() ?? defaultTarget.clone();
+
+    const endTarget = defaultTarget.clone();
+    const endPos = new THREE.Vector3(7.5, 6.8, 7.5);
+
+    autoFlightRef.current = {
+      t: 0,
+      dur: 5,
+      startPos,
+      startTarget,
+      endPos,
+      endTarget,
+    };
+
+    // activar overlay visual (tinte/jardín) durante el vuelo
+    setForceEntered(true);
+
+    // deshabilitar input durante el vuelo
+    if (c) c.enabled = false;
+
+    // empujar scroll al fondo (por si el overlay no lo dejó abajo)
+    requestAnimationFrame(() =>
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
+    );
+  }, [gardenActive, defaultTarget]);
+
+  // listeners de los eventos que dispara TextOverlay
+  useEffect(() => {
+    const onGo = () => startAutoEnter();
+    window.addEventListener("ui:overlay:dismissed", onGo as EventListener);
+    window.addEventListener("silence:completed", onGo as EventListener); // respaldo
+    return () => {
+      window.removeEventListener("ui:overlay:dismissed", onGo as EventListener);
+      window.removeEventListener("silence:completed", onGo as EventListener);
+    };
+  }, [startAutoEnter]);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -502,6 +606,18 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           setMyFlowerPos={setMyFlowerPos}
         />
 
+        {/* 🚀 Vuelo automático post-minuto */}
+        <AutoFlightLoop
+          autoFlightRef={autoFlightRef}
+          controlsRef={controlsRef}
+          onFinish={() => {
+            setGardenActive(true);
+            setForceEntered(true);
+            const c = controlsRef.current;
+            if (c) c.enabled = true;
+          }}
+        />
+
         {/* Cielo + nubes “levemente” elevadas */}
         <Sky
           sunPosition={[0, 5.5, -10]}
@@ -513,7 +629,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           inclination={0.47}
           azimuth={180}
         />
-        <group position={[0, 0.3 + MINUTE_YOFF, 0]}>
+        <group position={[0, 3.8 + MINUTE_YOFF, 0]}>
           <Clouds material={THREE.MeshLambertMaterial}>
             <Cloud
               seed={1}
@@ -611,11 +727,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
               {/* Ambient del JARDÍN (se cruza con el azul que maneja TextOverlay) */}
-              <AmbientAudio
-                src="/audio/ambient.mp3"
-                volume={0.16}
-                fadeMs={360}
-              />
+              <AmbientAudio src="/audio/ambient.mp3" volume={0.16} fadeMs={360} />
             </div>
           )}
         </Html>

@@ -197,14 +197,34 @@ function HeroWithFlower() {
         pointerEvents: "none",
       }}
     >
-      {/* centrado “natural”: ya no lo corro demasiado a la izquierda */}
       <div
         style={{
           color: "#fff",
           textAlign: isNarrow ? "center" : "left",
-          paddingLeft: isNarrow ? 0 : "18vw",
+          paddingLeft: isNarrow ? 0 : "28vw",
+          position: "relative",
         }}
       >
+        {/* 👇 Vela a la izquierda (solo desktop/anchos) */}
+        {!isNarrow && (
+          <Image
+            src="/candle.gif"
+            alt=""
+            width={180}
+            height={180}
+            unoptimized
+            style={{
+              position: "absolute",
+              left: "220px",
+              top: "50%",
+              transform: "translateY(-42%)",
+              imageRendering: "pixelated",
+              pointerEvents: "none",
+              filter: "drop-shadow(0 6px 14px rgba(0,0,0,.35))",
+            }}
+          />
+        )}
+
         <p
           className="font-mono"
           style={{
@@ -219,7 +239,7 @@ function HeroWithFlower() {
           style={{
             fontFamily: "var(--font-title, sans-serif)",
             fontWeight: 700,
-            fontSize: "clamp(64px,10vw,100px)",
+            fontSize: "clamp(64px,6.2vw,100px)",
             letterSpacing: "0.02em",
             lineHeight: 0.75,
             textShadow: "0 2px 10px rgba(0,0,0,.25)",
