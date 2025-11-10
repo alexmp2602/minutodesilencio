@@ -146,6 +146,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
         pauseOnHidden
       />
       <BlueBackdrop opacity={backdropOpacity} />
+      <VinesOverlay />
 
       {mounted && <MarqueeBorder strong />}
 
@@ -178,6 +179,7 @@ function HeroWithFlower() {
   const isNarrow = useIsNarrow();
   const [showHint, setShowHint] = useState(false);
   const [upper, setUpper] = useState(true);
+  const [hasInteracted, setHasInteracted] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setUpper((v) => !v), 150);
@@ -256,18 +258,39 @@ function HeroWithFlower() {
           position: "relative",
         }}
       >
-        <InteractiveFlower
-          scale={1}
-          position={[0, 0, 0]}
-          onHint={setShowHint}
-        />
+        <div
+          className={!hasInteracted ? "flowerWrap bob" : "flowerWrap"}
+          onPointerDown={() => setHasInteracted(true)}
+          onMouseEnter={() => setHasInteracted(true)}
+          style={{ position: "relative", width: "100%", height: "100%" }}
+        >
+          {/* Efectos de “atracción” (solo antes de interactuar) */}
+          {!hasInteracted && (
+            <>
+              <div className="pulseHalo" aria-hidden />
+              <div className="spinRing" aria-hidden />
+            </>
+          )}
+
+          <div style={{ position: "absolute", inset: 0 }}>
+            <InteractiveFlower
+              scale={1}
+              position={[0.2, 0, 0]}
+              onHint={(show) => {
+                setShowHint(show);
+                if (show) setHasInteracted(true);
+              }}
+            />
+          </div>
+        </div>
+
         {showHint && (
           <div
             style={{
               position: "absolute",
               left: "50%",
               top: 8,
-              transform: "translateX(-70%)",
+              transform: "translateX(-50%)",
               background: "rgba(255,255,255,.15)",
               color: "#fff",
               padding: "6px 10px",
@@ -280,6 +303,65 @@ function HeroWithFlower() {
             Hacé click en los pétalos
           </div>
         )}
+
+        {/* estilos locales de los efectos */}
+        <style jsx>{`
+          .flowerWrap {
+            position: relative;
+            width: 100%;
+            height: 100%;
+          }
+          .pulseHalo {
+            position: absolute;
+            inset: -60%;
+            border-radius: 50%;
+            background: radial-gradient(
+              closest-side,
+              rgba(255, 255, 255, 0.35),
+              rgba(255, 255, 255, 0) 70%
+            );
+            filter: blur(10px);
+            animation: pulse 1.8s ease-in-out infinite;
+            pointer-events: none;
+          }
+          .spinRing {
+            position: absolute;
+            inset: -2%;
+            border-radius: 50%;
+            border: 2px dashed rgba(255, 255, 255, 0.65);
+            animation: rotate 6s linear infinite;
+            pointer-events: none;
+            opacity: 0.8;
+          }
+          .bob {
+            animation: bob 2.6s ease-in-out infinite;
+          }
+          @keyframes pulse {
+            0%,
+            100% {
+              transform: scale(0.96);
+              opacity: 0.7;
+            }
+            50% {
+              transform: scale(1.05);
+              opacity: 1;
+            }
+          }
+          @keyframes rotate {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+          @keyframes bob {
+            0%,
+            100% {
+              transform: translateY(0);
+            }
+            50% {
+              transform: translateY(-6px);
+            }
+          }
+        `}</style>
       </div>
     </div>
   );
@@ -315,6 +397,13 @@ function PressHoldLoader() {
     }
   }, [k]);
 
+  // emite progreso continuo (0..1) para las ramas
+useEffect(() => {
+  window.dispatchEvent(
+    new CustomEvent("silence:progress", { detail: { k } })
+  );
+}, [k]);
+
   const barH = "min(66px, 6vw)";
 
   const onDown = () => setHolding(true);
@@ -336,7 +425,7 @@ function PressHoldLoader() {
         className="font-mono"
         style={{ gridColumn: "1 / -1", color: "#fff", letterSpacing: "0.04em" }}
       >
-        MANTENÉ APRETADO PARA CARGAR EL SILENCIO
+        MANTENÉ APRETADA LA BARRA PARA CARGAR EL SILENCIO
       </p>
 
       <Image
@@ -522,6 +611,124 @@ function ScrollHint({ visible }: { visible: boolean }) {
       >
         -deslizar para abajo-
       </div>
+    </div>
+  );
+}
+
+/* ---------- Ramas que crecen con el progreso ---------- */
+function VinesOverlay() {
+  const leftRef = useRef<SVGPathElement | null>(null);
+  const rightRef = useRef<SVGPathElement | null>(null);
+  const [k, setK] = useState(0); // 0..1
+
+  useEffect(() => {
+    const onP = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      const v = typeof detail.k === "number" ? detail.k : 0;
+      setK(Math.max(0, Math.min(1, v)));
+    };
+    window.addEventListener("silence:progress", onP as EventListener);
+    return () =>
+      window.removeEventListener("silence:progress", onP as EventListener);
+  }, []);
+
+  // calcula dashoffset según la longitud de cada path
+  const dashFor = (el: SVGPathElement | null) => {
+    if (!el) return 0;
+    const len = el.getTotalLength();
+    // offset va de len (nada visible) a 0 (completo) con easing suave
+    const eased = 1 - (1 - k) * (1 - k); // easeOutQuad
+    return (1 - eased) * len;
+  };
+
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1, // detrás del contenido principal del overlay
+        pointerEvents: "none",
+        overflow: "hidden",
+      }}
+    >
+      {/* SVG izquierdo */}
+      <svg
+        width="32vw"
+        height="100vh"
+        viewBox="0 0 320 1000"
+        preserveAspectRatio="xMinYMid meet"
+        style={{ position: "absolute", left: 0, top: 0, opacity: 0.9 }}
+      >
+        <defs>
+          <linearGradient id="vineGradL" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#bfe3ff" />
+            <stop offset="100%" stopColor="#e5f2ff" />
+          </linearGradient>
+        </defs>
+        <path
+          ref={leftRef}
+          d="M310,990 C120,860 140,720 80,600 C30,500 50,420 60,360 C75,270 120,210 160,170 C180,150 210,130 240,120"
+          fill="none"
+          stroke="url(#vineGradL)"
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            filter: "drop-shadow(0 6px 22px rgba(255,255,255,.18))",
+            strokeDasharray: leftRef.current
+              ? leftRef.current.getTotalLength()
+              : 1,
+            strokeDashoffset: dashFor(leftRef.current),
+            transition: "stroke-dashoffset 80ms linear",
+          }}
+        />
+        {/* hojitas sutiles (aparecen con k) */}
+        <g opacity={k}>
+          <circle cx="110" cy="700" r="5" fill="#e6f5ff" />
+          <circle cx="150" cy="520" r="4" fill="#e6f5ff" />
+          <circle cx="185" cy="360" r="5" fill="#e6f5ff" />
+        </g>
+      </svg>
+
+      {/* SVG derecho */}
+      <svg
+        width="32vw"
+        height="100vh"
+        viewBox="0 0 320 1000"
+        preserveAspectRatio="xMaxYMid meet"
+        style={{ position: "absolute", right: 0, top: 0, opacity: 0.9 }}
+      >
+        <defs>
+          <linearGradient id="vineGradR" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#bfe3ff" />
+            <stop offset="100%" stopColor="#e5f2ff" />
+          </linearGradient>
+        </defs>
+        <path
+          ref={rightRef}
+          d="M10,980 C200,860 180,740 240,610 C280,530 260,450 250,380 C235,280 200,210 160,170 C140,150 110,130 80,120"
+          fill="none"
+          stroke="url(#vineGradR)"
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            filter: "drop-shadow(0 6px 22px rgba(255,255,255,.18))",
+            strokeDasharray: rightRef.current
+              ? rightRef.current.getTotalLength()
+              : 1,
+            strokeDashoffset: dashFor(rightRef.current),
+            transition: "stroke-dashoffset 80ms linear",
+          }}
+        />
+        <g opacity={k}>
+          <circle cx="220" cy="680" r="5" fill="#e6f5ff" />
+          <circle cx="170" cy="500" r="4" fill="#e6f5ff" />
+          <circle cx="135" cy="330" r="5" fill="#e6f5ff" />
+        </g>
+      </svg>
     </div>
   );
 }
