@@ -2,6 +2,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "./providers";
+import CursorGlow from "@/components/ui/CursorGlow";
 
 import { DM_Mono } from "next/font/google";
 import localFont from "next/font/local";
@@ -105,6 +106,7 @@ export default function RootLayout({
         <Providers>
           <main id="main">{children}</main>
         </Providers>
+        <CursorGlow />
         <div id="overlay-root" />
       </body>
     </html>

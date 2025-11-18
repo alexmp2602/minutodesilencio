@@ -51,7 +51,6 @@ function writeStorage(arr: Msg[]) {
 
 /* ------------------------- Zócalo superior (solo reales) ------------------------- */
 function TopMessageTape({ items }: { items: Msg[] }) {
-  // deduplico por texto normalizado y preparo "píldoras" con hashtag a la izquierda
   const pills = React.useMemo(() => {
     const uniq = Array.from(
       new Map(
@@ -72,8 +71,7 @@ function TopMessageTape({ items }: { items: Msg[] }) {
 
     return safe.map((m) => (
       <span key={`${m.id}-${m.ts}`} className="pill">
-        <span className="hash"> #</span>
-        {m.txt}
+        <span className="hash">#</span> {m.txt}
       </span>
     ));
   }, [items]);
@@ -91,15 +89,15 @@ function TopMessageTape({ items }: { items: Msg[] }) {
     >
       <div
         style={{
-          background: "rgba(255,255,255,.12)",
-          borderBottom: "3px solid #fff",
-          backdropFilter: "blur(8px)",
+          background: "rgba(0,0,0,.45)",
+          borderBottom: "2px solid rgba(255,255,255,.6)",
+          backdropFilter: "blur(10px) saturate(160%)",
         }}
       >
         <div className="tapeTop">
           <div className="inner">
             {pills}
-            {pills} {/* duplico la secuencia para loop continuo */}
+            {pills}
           </div>
         </div>
       </div>
@@ -110,35 +108,29 @@ function TopMessageTape({ items }: { items: Msg[] }) {
           color: #fff;
           font-size: clamp(13px, 1.6vw, 18px);
           white-space: nowrap;
-          padding: 10px 0;
-          text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); /* 👈 agrega profundidad */
-        }
-        .tapeTop::before {
-          content: "";
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(
-            to bottom,
-            rgba(0, 0, 0, 0.3),
-            rgba(0, 0, 0, 0.15)
-          ); /* 👈 capa oscura detrás */
-          backdrop-filter: blur(8px) saturate(140%);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-          z-index: -1;
+          padding: 9px 0;
+          text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
         }
         .tapeTop .inner {
           display: inline-block;
           animation: mscroll 28s linear infinite;
-          mix-blend-mode: screen; /* 👈 mantiene el brillo en fondos oscuros */
         }
         .pill {
           display: inline-block;
-          padding: 2px 10px;
-          border: 1px solid rgba(255, 255, 255, 0.5);
+          padding: 3px 12px;
           border-radius: 999px;
           margin-inline: 6px;
-          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.45);
+          background: radial-gradient(
+            circle at 30% 0%,
+            rgba(255, 255, 255, 0.25),
+            rgba(255, 255, 255, 0.08)
+          );
           backdrop-filter: blur(6px);
+        }
+        .hash {
+          opacity: 0.9;
+          margin-right: 2px;
         }
         @keyframes mscroll {
           from {
@@ -336,34 +328,34 @@ export default function GardenOverlay() {
     <div
       style={{ position: "fixed", inset: 0, zIndex: 70, pointerEvents: "none" }}
     >
-      {/* ZÓCALO SUPERIOR: SOLO MENSAJES REALES */}
+      {/* ZÓCALO SUPERIOR */}
       <TopMessageTape items={items} />
 
-      {/* 🟩 Barra vertical */}
+      {/* 🟩 Barra vertical más grande */}
       <div
         style={{
           position: "fixed",
           top: "50%",
-          left: 20,
+          left: 24,
           transform: "translateY(-50%)",
-          width: 36,
-          height: 156,
+          width: 50,
+          height: 350,
           pointerEvents: "auto",
-          borderRadius: 12,
-          backdropFilter: "blur(8px)",
-          background: "rgba(0,0,0,.25)",
+          borderRadius: 14,
+          backdropFilter: "blur(10px)",
+          background: "rgba(0,0,0,.3)",
           boxShadow:
-            "0 6px 18px rgba(0,0,0,.18), inset 0 0 8px rgba(255,255,255,.12)",
+            "0 10px 30px rgba(0,0,0,.3), inset 0 0 10px rgba(255,255,255,.12)",
           display: "grid",
           gridTemplateRows: "1fr auto",
-          padding: 6,
+          padding: 8,
         }}
       >
         <div
           style={{
             position: "relative",
             width: "100%",
-            borderRadius: 8,
+            borderRadius: 10,
             overflow: "hidden",
             background: "rgba(255,255,255,.06)",
           }}
@@ -375,9 +367,10 @@ export default function GardenOverlay() {
               left: 0,
               width: "100%",
               height: `${Math.floor(progress)}%`,
-              borderRadius: 8,
-              transition: "height .25s ease",
-              background: "linear-gradient(to top,#58c48d,#b5e8c8)",
+              borderRadius: 10,
+              transition: "height .28s cubic-bezier(.2,.8,.2,1)",
+              background: "linear-gradient(to top,#58c48d,#c9f3da)",
+              boxShadow: "inset 0 0 14px rgba(0,0,0,.2)",
             }}
           />
         </div>
@@ -387,8 +380,8 @@ export default function GardenOverlay() {
             textAlign: "center",
             fontWeight: 800,
             fontSize: 13,
-            color: "#2b3b46",
-            textShadow: "0 1px 0 rgba(255,255,255,.6)",
+            color: "#e7f7ee",
+            textShadow: "0 1px 0 rgba(0,0,0,.7)",
             userSelect: "none",
           }}
         >
@@ -396,7 +389,7 @@ export default function GardenOverlay() {
         </div>
       </div>
 
-      {/* 🔻 Interfaz inferior: SOLO formulario (sin tira) */}
+      {/* 🔻 Interfaz inferior */}
       <div
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
@@ -420,14 +413,14 @@ export default function GardenOverlay() {
         >
           <div
             style={{
-              background: "rgba(255, 255, 255, 0.08)",
-              borderTop: "1px solid rgba(255, 255, 255, 0.35)",
+              background: "rgba(5, 30, 5, 0.6)",
+              borderTop: "1px solid rgba(255, 255, 255, 0.4)",
               borderLeft: "1px solid rgba(255, 255, 255, 0.25)",
               borderRight: "1px solid rgba(255, 255, 255, 0.25)",
-              backdropFilter: "blur(10px) saturate(180%)",
+              backdropFilter: "blur(12px) saturate(160%)",
               boxShadow:
-                "0 6px 20px rgba(0,0,0,0.25), inset 0 0 10px rgba(255,255,255,0.1)",
-              borderRadius: "16px 16px 0 0",
+                "0 -4px 24px rgba(0,0,0,0.35), inset 0 0 10px rgba(255,255,255,0.08)",
+              borderRadius: "18px 18px 0 0",
               overflow: "hidden",
             }}
           >
@@ -443,11 +436,12 @@ export default function GardenOverlay() {
                 }
                 style={{
                   flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,.8)",
-                  background: "rgba(255,255,255,.9)",
+                  padding: "11px 14px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.85)",
+                  background: "rgba(255,255,255,.92)",
                   outline: "none",
+                  fontSize: 14,
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -459,22 +453,23 @@ export default function GardenOverlay() {
               <button
                 onClick={submitMessage}
                 style={{
-                  padding: "10px 22px",
+                  padding: "11px 24px",
                   borderRadius: 14,
                   border: "none",
                   background: "linear-gradient(135deg, #345CFF, #6786FF)",
                   boxShadow:
                     "0 4px 15px rgba(0, 0, 0, 0.35), inset 0 0 8px rgba(255,255,255,0.25)",
                   color: "#fff",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   fontSize: 15,
                   letterSpacing: 0.2,
                   cursor: "pointer",
                   transition: "all 0.25s ease",
+                  whiteSpace: "nowrap",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.filter = "brightness(1.15)";
-                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.transform = "translateY(-1px)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.filter = "brightness(1)";
@@ -493,21 +488,21 @@ export default function GardenOverlay() {
                   width: 44,
                   height: 44,
                   borderRadius: "50%",
-                  border: "1px solid rgba(255,255,255,0.35)",
-                  background: "rgba(255,255,255,0.15)",
-                  backdropFilter: "blur(6px) saturate(150%)",
+                  border: "1px solid rgba(255,255,255,0.45)",
+                  background: "rgba(255,255,255,0.18)",
+                  backdropFilter: "blur(8px) saturate(150%)",
                   boxShadow:
-                    "inset 0 0 6px rgba(255,255,255,0.15), 0 2px 8px rgba(0,0,0,0.3)",
+                    "inset 0 0 6px rgba(255,255,255,0.15), 0 2px 10px rgba(0,0,0,0.35)",
                   color: "#fff",
                   cursor: "pointer",
                   transition: "all 0.25s ease",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.25)";
+                  e.currentTarget.style.background = "rgba(255,255,255,0.26)";
                   e.currentTarget.style.transform = "scale(1.05)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.15)";
+                  e.currentTarget.style.background = "rgba(255,255,255,0.18)";
                   e.currentTarget.style.transform = "scale(1)";
                 }}
               >

@@ -1,4 +1,4 @@
-//src/components/TextOverlay.tsx
+// src/components/TextOverlay.tsx
 "use client";
 
 import React, {
@@ -75,18 +75,39 @@ export default function TextOverlay({ progress }: { progress: number }) {
   const { muted } = useMute();
   const { play } = useSfx();
 
-  // ⬇️ NUEVO: estado de completado + fade
   const [completed, setCompleted] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
   const fadeRef = useRef<number | null>(null);
 
   const phase = useMemo<"intro" | "text" | "loading" | "done">(() => {
-    if (completed) return "done"; // ⬅️ fuerza done si ya se completó
+    if (completed) return "done";
     if (p < 0.25) return "intro";
     if (p < 0.5) return "text";
     if (p < 0.75) return "loading";
     return "done";
   }, [p, completed]);
+
+  /* 👇 BLOQUEO DE SCROLL SOLO EN LA FASE DE LOADER */
+  useEffect(() => {
+    const shouldLock = phase === "loading" && !completed;
+    if (!shouldLock) return;
+
+    const prevent = (e: Event) => {
+      e.preventDefault();
+    };
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    window.addEventListener("wheel", prevent, { passive: false });
+    window.addEventListener("touchmove", prevent, { passive: false });
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("wheel", prevent as EventListener);
+      window.removeEventListener("touchmove", prevent as EventListener);
+    };
+  }, [phase, completed]);
 
   const doneK = clamp01((p - 0.75) / 0.25);
   const backdropOpacity = phase === "done" ? 1 - easeOutCubic(doneK) : 1;
@@ -101,17 +122,15 @@ export default function TextOverlay({ progress }: { progress: number }) {
     prevPhase.current = phase;
   }, [phase, muted, play]);
 
-  // ⬇️ NUEVO: escucha el evento del loader, hace fade y auto-avanza
+  // escucha el evento del loader, hace fade y auto-avanza
   useEffect(() => {
     const onDone = () => {
       if (completed) return;
       setCompleted(true);
 
-      // auto-scroll un poco para "avanzar"
       const target = Math.max(window.scrollY, window.innerHeight * 0.92);
       window.scrollTo({ top: target, behavior: "smooth" });
 
-      // fade-out visual del overlay
       setFadeOut(true);
       fadeRef.current = window.setTimeout(() => {
         window.dispatchEvent(new CustomEvent("ui:overlay:dismissed"));
@@ -135,8 +154,8 @@ export default function TextOverlay({ progress }: { progress: number }) {
         pointerEvents: "none",
         display: "grid",
         placeItems: "center",
-        opacity: fadeOut ? 0 : 1, // ⬅️ NUEVO
-        transition: "opacity .55s ease", // ⬅️ NUEVO
+        opacity: fadeOut ? 0 : 1,
+        transition: "opacity .55s ease",
       }}
     >
       <AmbientAudio
@@ -207,7 +226,6 @@ function HeroWithFlower() {
           position: "relative",
         }}
       >
-        {/* 👇 Vela a la izquierda (solo desktop/anchos) */}
         {!isNarrow && (
           <Image
             src="/candle.gif"
@@ -264,7 +282,6 @@ function HeroWithFlower() {
           onMouseEnter={() => setHasInteracted(true)}
           style={{ position: "relative", width: "100%", height: "100%" }}
         >
-          {/* Efectos de “atracción” (solo antes de interactuar) */}
           {!hasInteracted && (
             <>
               <div className="pulseHalo" aria-hidden />
@@ -304,7 +321,6 @@ function HeroWithFlower() {
           </div>
         )}
 
-        {/* estilos locales de los efectos */}
         <style jsx>{`
           .flowerWrap {
             position: relative;
@@ -372,105 +388,122 @@ function PressHoldLoader() {
   const [k, setK] = useState(0); // 0..1
   const [holding, setHolding] = useState(false);
   const raf = useRef<number | null>(null);
-  const firedRef = useRef(false); // ⬅️ NUEVO: evita múltiples disparos
+  const firedRef = useRef(false);
+
+  const SPEED_UP = 0.0048;
+  const SPEED_DOWN = 0.0025;
 
   const tick = useCallback(() => {
-    setK((v) => {
-      const speedUp = 0.008;
-      const speedDown = 0.004;
-      return clamp01(v + (holding ? speedUp : -speedDown));
-    });
+    setK((v) => clamp01(v + (holding ? SPEED_UP : -SPEED_DOWN)));
     raf.current = window.requestAnimationFrame(tick);
   }, [holding]);
 
   useEffect(() => {
     raf.current = window.requestAnimationFrame(tick);
     return () => {
-      if (raf.current) window.cancelAnimationFrame(raf.current);
+      if (raf.current) cancelAnimationFrame(raf.current);
     };
   }, [tick]);
 
   useEffect(() => {
     if (k >= 1 && !firedRef.current) {
-      firedRef.current = true; // ⬅️ asegura “una sola vez”
+      firedRef.current = true;
       window.dispatchEvent(new CustomEvent("silence:completed"));
     }
   }, [k]);
 
-  // emite progreso continuo (0..1) para las ramas
-useEffect(() => {
-  window.dispatchEvent(
-    new CustomEvent("silence:progress", { detail: { k } })
-  );
-}, [k]);
-
-  const barH = "min(66px, 6vw)";
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("silence:progress", { detail: { k } })
+    );
+  }, [k]);
 
   const onDown = () => setHolding(true);
   const onUp = () => setHolding(false);
 
+  const barH = "min(82px, 7.6vw)";
+  const barW = "min(900px, 80vw)";
+  const candle = { w: 180, h: 180 };
+
   return (
     <div
       style={{
-        width: "min(1050px, 80vw)",
+        width: "min(1200px, 92vw)",
         display: "grid",
-        gridTemplateColumns: "180px 1fr 180px",
+        gridTemplateColumns: "auto 1fr auto",
         alignItems: "center",
         justifyItems: "center",
-        gap: 16,
+        gap: 20,
         pointerEvents: "none",
       }}
     >
-      <p
-        className="font-mono"
-        style={{ gridColumn: "1 / -1", color: "#fff", letterSpacing: "0.04em" }}
-      >
-        MANTENÉ APRETADA LA BARRA PARA CARGAR EL SILENCIO
-      </p>
-
       <Image
         src="/candle.gif"
         alt=""
-        width={180}
-        height={180}
+        width={candle.w}
+        height={candle.h}
         unoptimized
-        style={{ imageRendering: "pixelated" }}
+        style={{
+          imageRendering: "pixelated",
+          pointerEvents: "none",
+        }}
       />
 
-      <div
-        onPointerDown={onDown}
-        onPointerUp={onUp}
-        onPointerCancel={onUp}
-        onPointerLeave={onUp}
-        style={{
-          width: "115%",
-          height: barH,
-          border: "6px solid #fff",
-          background: "transparent",
-          overflow: "hidden",
-          pointerEvents: "auto",
-          touchAction: "none",
-          userSelect: "none",
-          borderRadius: 12,
-        }}
-      >
+      <div style={{ textAlign: "center", pointerEvents: "auto" }}>
         <div
+          onPointerDown={onDown}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
+          onPointerLeave={onUp}
           style={{
-            height: "100%",
-            width: `${Math.floor(easeOutCubic(k) * 100)}%`,
-            background: "#fff",
-            transition: holding ? "none" : "width .18s ease",
+            width: barW,
+            height: barH,
+            border: "6px solid #fff",
+            background: "rgba(255,255,255,.08)",
+            overflow: "hidden",
+            touchAction: "none",
+            userSelect: "none",
+            borderRadius: 16,
+            boxShadow:
+              "0 10px 40px rgba(0,0,0,.25), inset 0 0 0 2px rgba(255,255,255,.35)",
+            marginBottom: 12,
           }}
-        />
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${Math.floor(easeOutCubic(k) * 100)}%`,
+              background: "#fff",
+              transition: holding ? "none" : "width .18s ease",
+            }}
+          />
+        </div>
+
+        <div
+          className="font-mono"
+          style={{
+            color: "#fff",
+            fontSize: "clamp(16px, 2vw, 22px)",
+            opacity: 0.92,
+            letterSpacing: "0.5px",
+            textShadow: "0 2px 6px rgba(0,0,0,.25)",
+            pointerEvents: "none",
+          }}
+        >
+          Mantené presionada la barra
+        </div>
       </div>
 
       <Image
         src="/candle.gif"
         alt=""
-        width={180}
-        height={180}
+        width={candle.w}
+        height={candle.h}
         unoptimized
-        style={{ imageRendering: "pixelated" }}
+        style={{
+          imageRendering: "pixelated",
+          pointerEvents: "none",
+        }}
       />
     </div>
   );
@@ -633,11 +666,9 @@ function VinesOverlay() {
       window.removeEventListener("silence:progress", onP as EventListener);
   }, []);
 
-  // calcula dashoffset según la longitud de cada path
   const dashFor = (el: SVGPathElement | null) => {
     if (!el) return 0;
     const len = el.getTotalLength();
-    // offset va de len (nada visible) a 0 (completo) con easing suave
     const eased = 1 - (1 - k) * (1 - k); // easeOutQuad
     return (1 - eased) * len;
   };
@@ -648,12 +679,11 @@ function VinesOverlay() {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1, // detrás del contenido principal del overlay
+        zIndex: 1,
         pointerEvents: "none",
         overflow: "hidden",
       }}
     >
-      {/* SVG izquierdo */}
       <svg
         width="32vw"
         height="100vh"
@@ -684,7 +714,6 @@ function VinesOverlay() {
             transition: "stroke-dashoffset 80ms linear",
           }}
         />
-        {/* hojitas sutiles (aparecen con k) */}
         <g opacity={k}>
           <circle cx="110" cy="700" r="5" fill="#e6f5ff" />
           <circle cx="150" cy="520" r="4" fill="#e6f5ff" />
@@ -692,7 +721,6 @@ function VinesOverlay() {
         </g>
       </svg>
 
-      {/* SVG derecho */}
       <svg
         width="32vw"
         height="100vh"

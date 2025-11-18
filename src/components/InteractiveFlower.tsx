@@ -5,53 +5,48 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, ThreeEvent } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 
-/* ------- knobs de encuadre ------- */
-const FIT_HEIGHT = 1.5; // ↓ si aún se corta; ↑ si queda chico
-const OFFSET_Y = -1; // mueve todo el grupo hacia abajo/arriba
+/* ------- encuadre ------- */
+const FIT_HEIGHT = 1.5;
+const OFFSET_Y = -1;
 
 /* ---------------- tipos ---------------- */
 type Dyn = { falling: boolean; vel: THREE.Vector3; av: THREE.Vector3 };
+
 type Props = {
   url?: string;
   scale?: number;
   position?: [number, number, number];
   onHint?: (show: boolean) => void;
+
+  /** color principal de los pétalos */
+  petalColor?: string;
+  /** color del centro */
+  centerColor?: string;
+  /** color del tallo */
+  stemColor?: string;
+  /** si true el centro nunca se desprende */
+  centerSticky?: boolean;
+  /** hace que la flor “flote” y gire levemente */
+  floatSpin?: boolean;
 };
 
-const GRAVITY = -9.8;
+const GRAVITY = -3.0; // más suave
 const FLOOR_Y = 0;
 
-/* --------------- helpers 3D --------------- */
 const isMesh = (o: THREE.Object3D): o is THREE.Mesh => o instanceof THREE.Mesh;
 
-const makeMat = (color: string) =>
-  new THREE.MeshStandardMaterial({
+function makeMat(color: string) {
+  return new THREE.MeshStandardMaterial({
     color,
-    metalness: 0.1,
+    metalness: 0.05,
     roughness: 0.6,
     side: THREE.DoubleSide,
   });
-
-function sanitizeMesh(m: THREE.Mesh, name: string) {
-  const isTallo = /^tallo$/i.test(name);
-  const isParte = /^partedelmedio$/i.test(name);
-  const isPetalo = /^petalo[1-6]$/i.test(name);
-  m.material = makeMat(
-    isTallo ? "#3c3c3c" : isParte ? "#fafafa" : isPetalo ? "#ffffff" : "#dddddd"
-  );
 }
 
-function cloneMeshes(n: THREE.Object3D) {
-  const out: THREE.Mesh[] = [];
-  n.traverse((o) => {
-    if (isMesh(o)) {
-      const c = o.clone(true);
-      sanitizeMesh(c, o.name ?? "");
-      out.push(c);
-    }
-  });
-  return out;
-}
+const isStem = (name: string) => /^tallo$/i.test(name);
+const isCenter = (name: string) => /^partedelmedio$/i.test(name);
+const isPetal = (name: string) => /^petalo[1-6]$/i.test(name);
 
 /** centra X/Z, apoya base en Y=0, escala y aplica offset */
 function fitAndCenter(
@@ -88,7 +83,6 @@ const EXPECTED = [
   "Petalo6",
   "Tallo",
 ] as const;
-const isPetal = (n: string) => /^petalo[1-6]$/i.test(n);
 
 /* --------------- núcleo flor --------------- */
 function FlowerMesh({
@@ -96,9 +90,24 @@ function FlowerMesh({
   scale,
   position,
   onHint,
-}: Required<Pick<Props, "url" | "scale" | "position">> & {
-  onHint?: (s: boolean) => void;
-}) {
+  petalColor,
+  centerColor,
+  stemColor,
+  centerSticky,
+  floatSpin,
+}: Required<
+  Pick<
+    Props,
+    | "url"
+    | "scale"
+    | "position"
+    | "petalColor"
+    | "centerColor"
+    | "stemColor"
+    | "centerSticky"
+    | "floatSpin"
+  >
+> & { onHint?: (s: boolean) => void }) {
   const wrapperRef = useRef<THREE.Group>(null);
   const { scene } = useGLTF(url);
   const [dyn, setDyn] = useState<Record<string, Dyn>>({});
@@ -107,19 +116,36 @@ function FlowerMesh({
 
   const model = useMemo(() => {
     const g = new THREE.Group();
-    let any = false;
 
+    const stemMat = makeMat(stemColor);
+    const centerMat = makeMat(centerColor);
+    const petalMat = makeMat(petalColor);
+
+    const attachMaterial = (m: THREE.Mesh, name: string) => {
+      if (isStem(name)) m.material = stemMat;
+      else if (isCenter(name)) m.material = centerMat;
+      else if (isPetal(name)) m.material = petalMat;
+      else m.material = petalMat;
+    };
+
+    let any = false;
     for (const key of EXPECTED) {
       const n = scene.getObjectByName(key);
       if (!n) continue;
-      cloneMeshes(n).forEach((m) => g.add(m));
+      n.traverse((o) => {
+        if (!isMesh(o)) return;
+        const c = o.clone(true);
+        attachMaterial(c, o.name ?? "");
+        g.add(c);
+      });
       any = true;
     }
+
     if (!any) {
       scene.traverse((o) => {
         if (isMesh(o)) {
           const c = o.clone(true);
-          sanitizeMesh(c, o.name ?? "");
+          attachMaterial(c, o.name ?? "");
           g.add(c);
         }
       });
@@ -127,31 +153,52 @@ function FlowerMesh({
 
     fitAndCenter(g, FIT_HEIGHT, OFFSET_Y);
     return g;
-  }, [scene]);
+  }, [scene, petalColor, centerColor, stemColor]);
 
   useEffect(() => {
     const set = new Set<string>();
     model.traverse((o) => {
-      if (isMesh(o) && (isPetal(o.name) || !/^tallo$/i.test(o.name)))
-        set.add(o.uuid);
+      if (!isMesh(o)) return;
+      const name = o.name ?? "";
+      // sólo pétalos, nunca el tallo ni el centro
+      if (isPetal(name)) set.add(o.uuid);
+      if (!centerSticky && isCenter(name)) set.add(o.uuid);
     });
     petals.current = set;
-  }, [model]);
+  }, [model, centerSticky]);
+
+  const tRef = useRef(0);
+  const baseYRef = useRef<number | null>(null);
 
   useFrame((_, dt) => {
     const g = wrapperRef.current;
     if (!g) return;
+
+    tRef.current += dt;
+
+    // flotar + girar
+    if (floatSpin) {
+      if (baseYRef.current == null) baseYRef.current = g.position.y;
+      const baseY = baseYRef.current!;
+      g.position.y = baseY + Math.sin(tRef.current * 1.2) * 0.06;
+      g.rotation.y += 0.12 * dt;
+    }
+
+    // efecto hover (leve escala)
     g.scale.setScalar(
       THREE.MathUtils.lerp(g.scale.x, hovered ? 1.06 : 1, 0.18)
     );
 
+    // animación de pétalos que caen
     model.traverse((p) => {
       if (!isMesh(p)) return;
       const d = dyn[p.uuid];
       if (!d?.falling) return;
 
-      d.vel.y += GRAVITY * dt * 0.6;
+      d.vel.y += GRAVITY * dt;
+      d.vel.multiplyScalar(0.985); // drag suave → caída lenta y flotante
       p.position.addScaledVector(d.vel, dt);
+
       const dq = new THREE.Quaternion().setFromEuler(
         new THREE.Euler(d.av.x * dt, d.av.y * dt, d.av.z * dt)
       );
@@ -169,26 +216,30 @@ function FlowerMesh({
   const onOver = () => {
     setHovered(true);
     onHint?.(true);
-    document.body.style.cursor = "pointer";
   };
   const onOut = () => {
     setHovered(false);
     onHint?.(false);
-    document.body.style.cursor = "auto";
   };
+
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     const obj = e.object;
     if (!petals.current.has(obj.uuid)) return;
+
     setDyn((prev) => ({
       ...prev,
       [obj.uuid]: {
         falling: true,
         vel: new THREE.Vector3(
-          (Math.random() - 0.5) * 0.4,
-          2.0 + Math.random() * 1.0,
-          (Math.random() - 0.5) * 0.4
+          (Math.random() - 0.5) * 0.7,
+          1.4 + Math.random() * 0.8,
+          (Math.random() - 0.5) * 0.7
         ),
-        av: new THREE.Vector3(Math.random(), Math.random(), Math.random()),
+        av: new THREE.Vector3(
+          (Math.random() - 0.5) * 1.2,
+          (Math.random() - 0.5) * 1.2,
+          (Math.random() - 0.5) * 1.2
+        ),
       },
     }));
   };
@@ -211,13 +262,17 @@ export default function InteractiveFlower({
   scale = 1,
   position = [0, 0, 0],
   onHint,
+  petalColor = "#ffffff",
+  centerColor = "#fef6eb",
+  stemColor = "#1b1b1b",
+  centerSticky = true,
+  floatSpin = true,
 }: Props) {
   return (
     <Canvas
       style={{
         width: "min(420px, 50vw)",
         height: "min(420px, 50vw)",
-        cursor: "pointer",
       }}
       camera={{ position: [0, 1.25, 2.25], fov: 38, near: 0.05, far: 100 }}
     >
@@ -228,6 +283,11 @@ export default function InteractiveFlower({
         scale={scale}
         position={(position ?? [0, 0, 0]) as [number, number, number]}
         onHint={onHint}
+        petalColor={petalColor}
+        centerColor={centerColor}
+        stemColor={stemColor}
+        centerSticky={centerSticky}
+        floatSpin={floatSpin}
       />
     </Canvas>
   );
