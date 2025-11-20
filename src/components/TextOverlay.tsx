@@ -226,20 +226,16 @@ function HeroWithFlower() {
           position: "relative",
         }}
       >
+        {/* Vela del hero ahora draggable */}
         {!isNarrow && (
-          <Image
-            src="/candle.gif"
-            alt=""
-            width={180}
-            height={180}
-            unoptimized
-            style={{
+          <DraggableCandle
+            size={180}
+            showHintInitially
+            wrapperStyle={{
               position: "absolute",
-              left: "220px",
+              left: 220,
               top: "50%",
               transform: "translateY(-42%)",
-              imageRendering: "pixelated",
-              pointerEvents: "none",
               filter: "drop-shadow(0 6px 14px rgba(0,0,0,.35))",
             }}
           />
@@ -437,17 +433,8 @@ function PressHoldLoader() {
         pointerEvents: "none",
       }}
     >
-      <Image
-        src="/candle.gif"
-        alt=""
-        width={candle.w}
-        height={candle.h}
-        unoptimized
-        style={{
-          imageRendering: "pixelated",
-          pointerEvents: "none",
-        }}
-      />
+      {/* Vela izquierda draggable */}
+      <DraggableCandle size={candle.w} />
 
       <div style={{ textAlign: "center", pointerEvents: "auto" }}>
         <div
@@ -494,17 +481,196 @@ function PressHoldLoader() {
         </div>
       </div>
 
+      {/* Vela derecha draggable */}
+      <DraggableCandle size={candle.w} />
+    </div>
+  );
+}
+
+/* ---------- Vela draggable reutilizable ---------- */
+
+type DragState = {
+  dragging: boolean;
+  startX: number;
+  startY: number;
+  baseX: number;
+  baseY: number;
+  pointerId: number | null;
+  rect: DOMRect | null;
+  vw: number;
+  vh: number;
+};
+
+function DraggableCandle({
+  size = 180,
+  showHintInitially = false,
+  wrapperStyle,
+}: {
+  size?: number;
+  showHintInitially?: boolean;
+  wrapperStyle?: React.CSSProperties;
+}) {
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [showHint, setShowHint] = useState(showHintInitially);
+  const dragRef = useRef<DragState>({
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    baseX: 0,
+    baseY: 0,
+    pointerId: null,
+    rect: null,
+    vw: 0,
+    vh: 0,
+  });
+
+  useEffect(() => {
+    if (!showHint) return;
+    const id = window.setTimeout(() => setShowHint(false), 3500);
+    return () => window.clearTimeout(id);
+  }, [showHint]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setShowHint(false);
+
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+
+    dragRef.current = {
+      ...dragRef.current,
+      dragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: pos.x,
+      baseY: pos.y,
+      pointerId: e.pointerId,
+      rect,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+    };
+
+    el.setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.dragging || d.pointerId !== e.pointerId || !d.rect) return;
+
+    const rawDx = e.clientX - d.startX;
+    const rawDy = e.clientY - d.startY;
+
+    // Queremos permitir movimiento libre, solo evitando que salga del viewport
+    const margin = 8;
+
+    const tryDx = rawDx;
+    const tryDy = rawDy;
+
+    // Nueva posición del rect con ese delta
+    let newLeft = d.rect.left + tryDx;
+    let newTop = d.rect.top + tryDy;
+    let newRight = newLeft + d.rect.width;
+    let newBottom = newTop + d.rect.height;
+
+    let dx = tryDx;
+    let dy = tryDy;
+
+    // Ajustes para mantener dentro de pantalla
+    if (newLeft < margin) {
+      const diff = margin - newLeft;
+      dx += diff;
+      newLeft += diff;
+      newRight += diff;
+    }
+    if (newRight > d.vw - margin) {
+      const diff = newRight - (d.vw - margin);
+      dx -= diff;
+      newLeft -= diff;
+      newRight -= diff;
+    }
+    if (newTop < margin) {
+      const diff = margin - newTop;
+      dy += diff;
+      newTop += diff;
+      newBottom += diff;
+    }
+    if (newBottom > d.vh - margin) {
+      const diff = newBottom - (d.vh - margin);
+      dy -= diff;
+    }
+
+    setPos({
+      x: d.baseX + dx,
+      y: d.baseY + dy,
+    });
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d.dragging) return;
+    d.dragging = false;
+    if (d.pointerId != null) {
+      try {
+        e.currentTarget.releasePointerCapture(d.pointerId);
+      } catch {
+        // por si ya se liberó
+      }
+      d.pointerId = null;
+    }
+  };
+
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      style={{
+        position: wrapperStyle?.position ?? "relative",
+        ...wrapperStyle,
+        touchAction: "none",
+        cursor: "grab",
+        pointerEvents: "auto",
+        transform: `${wrapperStyle?.transform ?? ""} translate3d(${pos.x}px, ${
+          pos.y
+        }px, 0)`.trim(),
+        transition: dragRef.current.dragging ? "none" : "transform 0.12s ease",
+      }}
+    >
       <Image
         src="/candle.gif"
         alt=""
-        width={candle.w}
-        height={candle.h}
+        width={size}
+        height={size}
         unoptimized
         style={{
           imageRendering: "pixelated",
           pointerEvents: "none",
+          display: "block",
         }}
       />
+
+      {showHint && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: -14,
+            transform: "translateX(-50%)",
+            background: "rgba(255,255,255,0.16)",
+            color: "#fff",
+            padding: "3px 8px",
+            borderRadius: 999,
+            fontSize: 11,
+            letterSpacing: "0.03em",
+            backdropFilter: "blur(6px)",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Arrastrá la vela
+        </div>
+      )}
     </div>
   );
 }
