@@ -10,10 +10,8 @@ const MESSAGES = [
 ];
 
 export default function GardenHint({
-  seconds = 4,
   autoRotateMs = 0, // poné 4000 si querés que cambie cada 4s
 }: {
-  seconds?: number;
   autoRotateMs?: number;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -21,21 +19,25 @@ export default function GardenHint({
     Math.floor(Math.random() * MESSAGES.length)
   );
 
-  // Mostrar popup al entrar
+  // Mostrar popup al entrar (queda hasta comenzar)
   React.useEffect(() => {
     setOpen(true);
-    const t = setTimeout(() => setOpen(false), seconds * 1000);
-    return () => clearTimeout(t);
-  }, [seconds]);
+  }, []);
 
   // Rotación opcional entre frases
   React.useEffect(() => {
-    if (!autoRotateMs) return;
+    if (!autoRotateMs || !open) return;
     const id = setInterval(() => {
       setMsgIdx((i) => (i + 1) % MESSAGES.length);
     }, autoRotateMs);
     return () => clearInterval(id);
-  }, [autoRotateMs]);
+  }, [autoRotateMs, open]);
+
+  const onStart = React.useCallback(() => {
+    setOpen(false);
+    // Evento global para que el resto "arranque"
+    window.dispatchEvent(new CustomEvent("ms:garden:started"));
+  }, []);
 
   if (!open) return null;
 
@@ -56,43 +58,13 @@ export default function GardenHint({
         boxShadow:
           "0 12px 30px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.22)",
         backdropFilter: "blur(1.5px)",
-        width: "min(860px, 88vw)",
+        width: "min(700px, 88vw)",
         minHeight: 56,
-        padding: "16px 52px 16px 24px",
+        padding: "16px 24px 14px",
+        display: "grid",
+        gap: 12,
       }}
     >
-      <button
-        aria-label="Cerrar"
-        onClick={() => setOpen(false)}
-        style={{
-          position: "absolute",
-          right: -12,
-          top: -12,
-          width: 28,
-          height: 28,
-          borderRadius: 999,
-          background: "rgba(18,39,230,.80)",
-          border: "1px solid rgba(255,255,255,.75)",
-          color: "#fff",
-          cursor: "pointer",
-          lineHeight: 1,
-          display: "grid",
-          placeItems: "center",
-          boxShadow: "0 4px 12px rgba(0,0,0,.25)",
-        }}
-      >
-        <span
-          style={{
-            fontSize: 16,
-            fontWeight: 600,
-            transform: "translateY(-1px)",
-            userSelect: "none",
-          }}
-        >
-          ×
-        </span>
-      </button>
-
       <div
         className="font-mono"
         style={{
@@ -100,11 +72,40 @@ export default function GardenHint({
           fontSize: "clamp(16px, 1.6vw, 20px)",
           letterSpacing: "0.015em",
           userSelect: "none",
-          textAlign: "left",
+          textAlign: "center",
           textShadow: "0 1px 2px rgba(0,0,0,.25)",
         }}
       >
         {MESSAGES[msgIdx]}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <button
+          onClick={onStart}
+          className="font-mono"
+          style={{
+            padding: "8px 22px",
+            background: "#fff",
+            color: "#0b0b0b",
+            fontWeight: 900,
+            fontSize: "clamp(14px,1.6vw,18px)",
+            borderRadius: 999,
+            border: "3px solid #111",
+            cursor: "pointer",
+            boxShadow: "0 6px 18px rgba(0,0,0,.35)",
+            transition: "transform .15s ease, filter .15s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.filter = "brightness(1.05)";
+            e.currentTarget.style.transform = "translateY(-1px)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.filter = "brightness(1)";
+            e.currentTarget.style.transform = "translateY(0)";
+          }}
+        >
+          Comenzar
+        </button>
       </div>
     </div>
   );

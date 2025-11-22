@@ -188,7 +188,8 @@ export default function TextOverlay({ progress }: { progress: number }) {
         )}
       </div>
 
-      <ScrollHint visible={p < 0.98} />
+      {/* ✅ cambio: no mostrar el hint de scroll durante loading */}
+      {phase !== "loading" && <ScrollHint visible={p < 0.98} />}
     </div>
   );
 }
@@ -612,9 +613,7 @@ function DraggableCandle({
     if (d.pointerId != null) {
       try {
         e.currentTarget.releasePointerCapture(d.pointerId);
-      } catch {
-        // por si ya se liberó
-      }
+      } catch {}
       d.pointerId = null;
     }
   };
