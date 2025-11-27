@@ -7,7 +7,7 @@ import AmbientAudio from "@/components/AmbientAudio";
 import { useMute } from "@/hooks/useMute";
 import useSfx from "@/hooks/useSfx";
 import InteractiveFlower from "@/components/InteractiveFlower";
-// import VinesOverlay from "@/components/VinesOverlay";
+import LoadingAuraProgress from "@/components/LoadingAuraProgress";
 
 /* Utils */
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -219,7 +219,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
       />
 
       <BlueBackdrop opacity={backdropOpacity} />
-      {/* <VinesOverlay active={phase === "loading"} /> */}
+      <LoadingAuraProgress active={phase === "loading"} />
 
       {mounted && <MarqueeBorder strong />}
 
