@@ -1,18 +1,13 @@
 // src/components/TextOverlay.tsx
 "use client";
 
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useCallback,
-} from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import AmbientAudio from "@/components/AmbientAudio";
 import { useMute } from "@/hooks/useMute";
 import useSfx from "@/hooks/useSfx";
 import InteractiveFlower from "@/components/InteractiveFlower";
+// import VinesOverlay from "@/components/VinesOverlay";
 
 /* Utils */
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -25,6 +20,7 @@ function useMounted(): boolean {
   }, []);
   return m;
 }
+
 function useIsNarrow(bp = 900): boolean {
   const [n, set] = useState(false);
   useEffect(() => {
@@ -46,7 +42,7 @@ function warpProgress(
   const sum = (a: number, b: number) => a + b;
   const w = weights.map((v) => v / weights.reduce(sum, 0));
   const l = logical.map((v) => v / logical.reduce(sum, 0));
-  const inCum = [0, w[0], w[0] + w[1], w[0] + w[1] + w[2], 1];
+  const inCum = [0, w[0], w[0] + w[1], w[0] + w[2], 1];
   const outCum = [0, l[0], l[0] + l[1], l[0] + l[2], 1];
   const seg = (i: 0 | 1 | 2 | 3) =>
     outCum[i] +
@@ -58,15 +54,18 @@ function warpProgress(
 }
 
 function BlueBackdrop({ opacity = 1 }: { opacity?: number }) {
-  const style: React.CSSProperties = {
-    position: "fixed",
-    inset: 0,
-    background: "#1227e6",
-    zIndex: 0,
-    pointerEvents: "none",
-    opacity,
-  };
-  return <div style={style} />;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#1227e6",
+        zIndex: 0,
+        pointerEvents: "none",
+        opacity,
+      }}
+    />
+  );
 }
 
 export default function TextOverlay({ progress }: { progress: number }) {
@@ -79,6 +78,9 @@ export default function TextOverlay({ progress }: { progress: number }) {
   const [fadeOut, setFadeOut] = useState(false);
   const fadeRef = useRef<number | null>(null);
 
+  // GAME OVER del ritual
+  const [ritualFailed, setRitualFailed] = useState(false);
+
   const phase = useMemo<"intro" | "text" | "loading" | "done">(() => {
     if (completed) return "done";
     if (p < 0.25) return "intro";
@@ -87,33 +89,11 @@ export default function TextOverlay({ progress }: { progress: number }) {
     return "done";
   }, [p, completed]);
 
-  /* 👇 BLOQUEO DE SCROLL SOLO EN LA FASE DE LOADER */
-  useEffect(() => {
-    const shouldLock = phase === "loading" && !completed;
-    if (!shouldLock) return;
-
-    const prevent = (e: Event) => {
-      e.preventDefault();
-    };
-
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    window.addEventListener("wheel", prevent, { passive: false });
-    window.addEventListener("touchmove", prevent, { passive: false });
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("wheel", prevent as EventListener);
-      window.removeEventListener("touchmove", prevent as EventListener);
-    };
-  }, [phase, completed]);
-
   const doneK = clamp01((p - 0.75) / 0.25);
   const backdropOpacity = phase === "done" ? 1 - easeOutCubic(doneK) : 1;
   const ambientVolume = 0.18 * (phase === "done" ? 1 - easeOutCubic(doneK) : 1);
 
-  // sfx al entrar en "loading"
+  /* SFX al entrar en loading */
   const prevPhase = useRef<"intro" | "text" | "loading" | "done" | null>(null);
   useEffect(() => {
     if (!muted && phase === "loading" && prevPhase.current !== "loading") {
@@ -122,16 +102,17 @@ export default function TextOverlay({ progress }: { progress: number }) {
     prevPhase.current = phase;
   }, [phase, muted, play]);
 
-  // escucha el evento del loader, hace fade y auto-avanza
+  /* Completar silencio */
   useEffect(() => {
     const onDone = () => {
       if (completed) return;
       setCompleted(true);
 
-      const target = Math.max(window.scrollY, window.innerHeight * 0.92);
-      window.scrollTo({ top: target, behavior: "smooth" });
+      const targetTop = Math.max(window.scrollY, window.innerHeight * 0.92);
+      window.scrollTo({ top: targetTop, behavior: "smooth" });
 
       setFadeOut(true);
+
       fadeRef.current = window.setTimeout(() => {
         window.dispatchEvent(new CustomEvent("ui:overlay:dismissed"));
       }, 650);
@@ -143,6 +124,78 @@ export default function TextOverlay({ progress }: { progress: number }) {
       if (fadeRef.current) window.clearTimeout(fadeRef.current);
     };
   }, [completed]);
+
+  // ---------- GAME OVER UI ----------
+  if (ritualFailed) {
+    const handleRestart = () => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      setRitualFailed(false);
+      setCompleted(false);
+      setFadeOut(false);
+    };
+
+    return (
+      <div
+        aria-hidden
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "grid",
+          placeItems: "center",
+          pointerEvents: "auto",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(18, 39, 230, 0.94)",
+            backdropFilter: "blur(4px)",
+          }}
+        />
+        <div
+          style={{
+            position: "relative",
+            textAlign: "center",
+            padding: "0 24px",
+          }}
+        >
+          <p
+            className="font-mono"
+            style={{
+              color: "#ffffff",
+              fontSize: "clamp(20px, 2.4vw, 30px)",
+              marginBottom: 26,
+            }}
+          >
+            El ritual no alcanzó
+          </p>
+
+          <button
+            type="button"
+            onClick={handleRestart}
+            className="font-mono"
+            style={{
+              appearance: "none",
+              border: "2px solid #ffffff",
+              background: "#ffffff",
+              color: "#000000",
+              padding: "10px 26px",
+              fontSize: "clamp(14px, 1.4vw, 18px)",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+            }}
+          >
+            VOLVER A EMPEZAR
+          </button>
+        </div>
+      </div>
+    );
+  }
+  // ---------- FIN GAME OVER ----------
 
   return (
     <div
@@ -164,8 +217,9 @@ export default function TextOverlay({ progress }: { progress: number }) {
         fadeMs={320}
         pauseOnHidden
       />
+
       <BlueBackdrop opacity={backdropOpacity} />
-      <VinesOverlay />
+      {/* <VinesOverlay active={phase === "loading"} /> */}
 
       {mounted && <MarqueeBorder strong />}
 
@@ -180,7 +234,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
         }}
       >
         {phase === "loading" ? (
-          <PressHoldLoader />
+          <PressHoldLoader onFail={() => setRitualFailed(true)} />
         ) : phase === "done" ? (
           <DoneBlock />
         ) : (
@@ -188,13 +242,12 @@ export default function TextOverlay({ progress }: { progress: number }) {
         )}
       </div>
 
-      {/* ✅ cambio: no mostrar el hint de scroll durante loading */}
       {phase !== "loading" && <ScrollHint visible={p < 0.98} />}
     </div>
   );
 }
 
-/* ---------- HERO: hashtag + flor ---------- */
+/* ---------- HERO ---------- */
 function HeroWithFlower() {
   const isNarrow = useIsNarrow();
   const [showHint, setShowHint] = useState(false);
@@ -227,7 +280,6 @@ function HeroWithFlower() {
           position: "relative",
         }}
       >
-        {/* Vela del hero ahora draggable */}
         {!isNarrow && (
           <DraggableCandle
             size={180}
@@ -237,7 +289,7 @@ function HeroWithFlower() {
               left: 220,
               top: "50%",
               transform: "translateY(-42%)",
-              filter: "drop-shadow(0 6px 14px rgba(0,0,0,.35))",
+              filter: "drop-shadow(0 6px 14px rgba(0, 0, 0, 0.35))",
             }}
           />
         )}
@@ -252,6 +304,7 @@ function HeroWithFlower() {
         >
           a todos aquellos
         </p>
+
         <h1
           style={{
             fontFamily: "var(--font-title, sans-serif)",
@@ -259,7 +312,7 @@ function HeroWithFlower() {
             fontSize: "clamp(64px,6.2vw,100px)",
             letterSpacing: "0.02em",
             lineHeight: 0.75,
-            textShadow: "0 2px 10px rgba(0,0,0,.25)",
+            textShadow: "0 2px 10px rgba(0,0,0,0.25)",
           }}
         >
           {hashtag}
@@ -269,14 +322,13 @@ function HeroWithFlower() {
       <div
         style={{
           height: isNarrow ? 300 : 380,
-          pointerEvents: "auto",
           position: "relative",
+          pointerEvents: "auto",
         }}
       >
         <div
           className={!hasInteracted ? "flowerWrap bob" : "flowerWrap"}
           onPointerDown={() => setHasInteracted(true)}
-          onMouseEnter={() => setHasInteracted(true)}
           style={{ position: "relative", width: "100%", height: "100%" }}
         >
           {!hasInteracted && (
@@ -292,7 +344,9 @@ function HeroWithFlower() {
               position={[0.2, 0, 0]}
               onHint={(show) => {
                 setShowHint(show);
-                if (show) setHasInteracted(true);
+                if (show) {
+                  setHasInteracted((prev) => prev || true);
+                }
               }}
             />
           </div>
@@ -335,7 +389,6 @@ function HeroWithFlower() {
             );
             filter: blur(10px);
             animation: pulse 1.8s ease-in-out infinite;
-            pointer-events: none;
           }
           .spinRing {
             position: absolute;
@@ -343,8 +396,6 @@ function HeroWithFlower() {
             border-radius: 50%;
             border: 2px dashed rgba(255, 255, 255, 0.65);
             animation: rotate 6s linear infinite;
-            pointer-events: none;
-            opacity: 0.8;
           }
           .bob {
             animation: bob 2.6s ease-in-out infinite;
@@ -380,35 +431,89 @@ function HeroWithFlower() {
   );
 }
 
-/* ---------- Loader: “presionar y mantener” ---------- */
-function PressHoldLoader() {
-  const [k, setK] = useState(0); // 0..1
+/* ---------- PressHoldLoader (con fail + delay) ---------- */
+function PressHoldLoader({ onFail }: { onFail?: () => void }) {
+  const [k, setK] = useState(0);
   const [holding, setHolding] = useState(false);
+
+  const holdingRef = useRef(false);
   const raf = useRef<number | null>(null);
-  const firedRef = useRef(false);
+  const firedRef = useRef(false); // éxito
+  const failedRef = useRef(false); // game over
+  const hadProgressRef = useRef(false); // subió alguna vez
+  const failTimeoutRef = useRef<number | null>(null); // delay para mostrar 0
 
   const SPEED_UP = 0.0048;
   const SPEED_DOWN = 0.0025;
 
-  const tick = useCallback(() => {
-    setK((v) => clamp01(v + (holding ? SPEED_UP : -SPEED_DOWN)));
-    raf.current = window.requestAnimationFrame(tick);
+  /* Sync ref */
+  useEffect(() => {
+    holdingRef.current = holding;
   }, [holding]);
 
+  /* RAF loop estable */
   useEffect(() => {
-    raf.current = window.requestAnimationFrame(tick);
+    const loop = () => {
+      setK((v) =>
+        clamp01(v + (holdingRef.current ? SPEED_UP : SPEED_DOWN * -1))
+      );
+      raf.current = window.requestAnimationFrame(loop);
+    };
+    raf.current = window.requestAnimationFrame(loop);
+
     return () => {
       if (raf.current) cancelAnimationFrame(raf.current);
+      if (failTimeoutRef.current) {
+        window.clearTimeout(failTimeoutRef.current);
+      }
     };
-  }, [tick]);
+  }, []);
 
+  /* completar (éxito) */
   useEffect(() => {
     if (k >= 1 && !firedRef.current) {
       firedRef.current = true;
+      if (failTimeoutRef.current) {
+        window.clearTimeout(failTimeoutRef.current);
+        failTimeoutRef.current = null;
+      }
       window.dispatchEvent(new CustomEvent("silence:completed"));
     }
   }, [k]);
 
+  /* fallo: barra vuelve a 0 después de haber subido, con 1s de delay */
+  useEffect(() => {
+    if (k > 0 && k < 1) {
+      hadProgressRef.current = true;
+      if (failTimeoutRef.current) {
+        window.clearTimeout(failTimeoutRef.current);
+        failTimeoutRef.current = null;
+      }
+    }
+
+    if (
+      !holding &&
+      k === 0 &&
+      hadProgressRef.current &&
+      !failedRef.current &&
+      !firedRef.current
+    ) {
+      if (!failTimeoutRef.current) {
+        failTimeoutRef.current = window.setTimeout(() => {
+          failedRef.current = true;
+          onFail?.();
+        }, 1000); // 1 segundo para que se vea la barra vacía
+      }
+    } else {
+      // si vuelve a tener progreso o vuelve a presionar, cancelamos el pending-fail
+      if (failTimeoutRef.current && (holding || k > 0)) {
+        window.clearTimeout(failTimeoutRef.current);
+        failTimeoutRef.current = null;
+      }
+    }
+  }, [k, holding, onFail]);
+
+  /* enviar progreso */
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("silence:progress", { detail: { k } })
@@ -418,9 +523,9 @@ function PressHoldLoader() {
   const onDown = () => setHolding(true);
   const onUp = () => setHolding(false);
 
-  const barH = "min(82px, 7.6vw)";
   const barW = "min(900px, 80vw)";
-  const candle = { w: 180, h: 180 };
+  const barH = "min(82px, 7.6vw)";
+  const candleSize = 180;
 
   return (
     <div
@@ -434,8 +539,7 @@ function PressHoldLoader() {
         pointerEvents: "none",
       }}
     >
-      {/* Vela izquierda draggable */}
-      <DraggableCandle size={candle.w} />
+      <DraggableCandle size={candleSize} />
 
       <div style={{ textAlign: "center", pointerEvents: "auto" }}>
         <div
@@ -447,14 +551,14 @@ function PressHoldLoader() {
             width: barW,
             height: barH,
             border: "6px solid #fff",
-            background: "rgba(255,255,255,.08)",
+            borderRadius: 16,
+            background: "rgba(255,255,255,.09)",
             overflow: "hidden",
+            marginBottom: 12,
             touchAction: "none",
             userSelect: "none",
-            borderRadius: 16,
             boxShadow:
-              "0 10px 40px rgba(0,0,0,.25), inset 0 0 0 2px rgba(255,255,255,.35)",
-            marginBottom: 12,
+              "0 10px 40px rgba(0,0,0,.26), inset 0 0 0 2px rgba(255,255,255,.35)",
           }}
         >
           <div
@@ -467,23 +571,18 @@ function PressHoldLoader() {
           />
         </div>
 
-        <div
+        <p
           className="font-mono"
           style={{
             color: "#fff",
             fontSize: "clamp(16px, 2vw, 22px)",
-            opacity: 0.92,
-            letterSpacing: "0.5px",
-            textShadow: "0 2px 6px rgba(0,0,0,.25)",
-            pointerEvents: "none",
           }}
         >
           Mantené presionada la barra
-        </div>
+        </p>
       </div>
 
-      {/* Vela derecha draggable */}
-      <DraggableCandle size={candle.w} />
+      <DraggableCandle size={candleSize} />
     </div>
   );
 }
@@ -561,22 +660,16 @@ function DraggableCandle({
     const rawDx = e.clientX - d.startX;
     const rawDy = e.clientY - d.startY;
 
-    // Queremos permitir movimiento libre, solo evitando que salga del viewport
     const margin = 8;
 
-    const tryDx = rawDx;
-    const tryDy = rawDy;
-
-    // Nueva posición del rect con ese delta
-    let newLeft = d.rect.left + tryDx;
-    let newTop = d.rect.top + tryDy;
+    let newLeft = d.rect.left + rawDx;
+    let newTop = d.rect.top + rawDy;
     let newRight = newLeft + d.rect.width;
     let newBottom = newTop + d.rect.height;
 
-    let dx = tryDx;
-    let dy = tryDy;
+    let dx = rawDx;
+    let dy = rawDy;
 
-    // Ajustes para mantener dentro de pantalla
     if (newLeft < margin) {
       const diff = margin - newLeft;
       dx += diff;
@@ -809,119 +902,6 @@ function ScrollHint({ visible }: { visible: boolean }) {
       >
         -deslizar para abajo-
       </div>
-    </div>
-  );
-}
-
-/* ---------- Ramas que crecen con el progreso ---------- */
-function VinesOverlay() {
-  const leftRef = useRef<SVGPathElement | null>(null);
-  const rightRef = useRef<SVGPathElement | null>(null);
-  const [k, setK] = useState(0); // 0..1
-
-  useEffect(() => {
-    const onP = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail) return;
-      const v = typeof detail.k === "number" ? detail.k : 0;
-      setK(Math.max(0, Math.min(1, v)));
-    };
-    window.addEventListener("silence:progress", onP as EventListener);
-    return () =>
-      window.removeEventListener("silence:progress", onP as EventListener);
-  }, []);
-
-  const dashFor = (el: SVGPathElement | null) => {
-    if (!el) return 0;
-    const len = el.getTotalLength();
-    const eased = 1 - (1 - k) * (1 - k); // easeOutQuad
-    return (1 - eased) * len;
-  };
-
-  return (
-    <div
-      aria-hidden
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1,
-        pointerEvents: "none",
-        overflow: "hidden",
-      }}
-    >
-      <svg
-        width="32vw"
-        height="100vh"
-        viewBox="0 0 320 1000"
-        preserveAspectRatio="xMinYMid meet"
-        style={{ position: "absolute", left: 0, top: 0, opacity: 0.9 }}
-      >
-        <defs>
-          <linearGradient id="vineGradL" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#bfe3ff" />
-            <stop offset="100%" stopColor="#e5f2ff" />
-          </linearGradient>
-        </defs>
-        <path
-          ref={leftRef}
-          d="M310,990 C120,860 140,720 80,600 C30,500 50,420 60,360 C75,270 120,210 160,170 C180,150 210,130 240,120"
-          fill="none"
-          stroke="url(#vineGradL)"
-          strokeWidth="6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{
-            filter: "drop-shadow(0 6px 22px rgba(255,255,255,.18))",
-            strokeDasharray: leftRef.current
-              ? leftRef.current.getTotalLength()
-              : 1,
-            strokeDashoffset: dashFor(leftRef.current),
-            transition: "stroke-dashoffset 80ms linear",
-          }}
-        />
-        <g opacity={k}>
-          <circle cx="110" cy="700" r="5" fill="#e6f5ff" />
-          <circle cx="150" cy="520" r="4" fill="#e6f5ff" />
-          <circle cx="185" cy="360" r="5" fill="#e6f5ff" />
-        </g>
-      </svg>
-
-      <svg
-        width="32vw"
-        height="100vh"
-        viewBox="0 0 320 1000"
-        preserveAspectRatio="xMaxYMid meet"
-        style={{ position: "absolute", right: 0, top: 0, opacity: 0.9 }}
-      >
-        <defs>
-          <linearGradient id="vineGradR" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#bfe3ff" />
-            <stop offset="100%" stopColor="#e5f2ff" />
-          </linearGradient>
-        </defs>
-        <path
-          ref={rightRef}
-          d="M10,980 C200,860 180,740 240,610 C280,530 260,450 250,380 C235,280 200,210 160,170 C140,150 110,130 80,120"
-          fill="none"
-          stroke="url(#vineGradR)"
-          strokeWidth="6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{
-            filter: "drop-shadow(0 6px 22px rgba(255,255,255,.18))",
-            strokeDasharray: rightRef.current
-              ? rightRef.current.getTotalLength()
-              : 1,
-            strokeDashoffset: dashFor(rightRef.current),
-            transition: "stroke-dashoffset 80ms linear",
-          }}
-        />
-        <g opacity={k}>
-          <circle cx="220" cy="680" r="5" fill="#e6f5ff" />
-          <circle cx="170" cy="500" r="4" fill="#e6f5ff" />
-          <circle cx="135" cy="330" r="5" fill="#e6f5ff" />
-        </g>
-      </svg>
     </div>
   );
 }

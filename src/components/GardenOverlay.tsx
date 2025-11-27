@@ -6,7 +6,6 @@ import { createPortal } from "react-dom";
 import { getSupabaseBrowser } from "@/lib/supabaseBrowser";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Message } from "@/lib/types";
-import TI from "@/components/ui/TablerIcon";
 import { useMuteStore } from "@/state/muteStore";
 import useSfx from "@/hooks/useSfx";
 
@@ -152,8 +151,7 @@ export default function GardenOverlay() {
   React.useEffect(() => setPortalEl(document.body), []);
 
   /* ---------- Sonido ---------- */
-  const muted = useMuteStore((s) => s.muted);
-  const toggleMute = useMuteStore((s) => s.toggleMute);
+  const muted = useMuteStore((s) => s.muted); // solo lectura, ya no mostramos botón
   const { play } = useSfx();
 
   /* ---------- Barra de progreso ---------- */
@@ -404,12 +402,38 @@ export default function GardenOverlay() {
           pointerEvents: "auto",
         }}
       >
+        {/* Solapa visible cuando está cerrado */}
+        {!open && (
+          <div
+            onClick={() => setOpen(true)}
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: 8,
+              transform: "translateX(-50%)",
+              padding: "6px 18px",
+              borderRadius: "999px 999px 0 0",
+              background: "rgba(255,255,255,0.95)",
+              color: "#000",
+              fontSize: 12,
+              letterSpacing: 0.12,
+              fontFamily: "var(--font-mono, system-ui)",
+              boxShadow: "0 -3px 16px rgba(0,0,0,0.45)",
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+          >
+            DEJA UN MENSAJE
+          </div>
+        )}
+
         <div
           style={{
             margin: "0 auto",
             width: "min(1200px, 94vw)",
             transform: `translateY(${open ? "0%" : "70%"})`,
             transition: "transform .25s ease",
+            position: "relative",
           }}
         >
           <div
@@ -430,11 +454,7 @@ export default function GardenOverlay() {
                 value={txt}
                 onChange={(e) => setTxt(e.target.value)}
                 maxLength={50}
-                placeholder={
-                  online === "sb"
-                    ? "Escribí tu mensaje (se comparte en vivo)…"
-                    : "Escribí tu mensaje (local)…"
-                }
+                placeholder="Deja tu mensaje de despedida #QEPD (se comparte en vivo)..."
                 style={{
                   flex: 1,
                   padding: "11px 14px",
@@ -479,45 +499,10 @@ export default function GardenOverlay() {
               >
                 Publicar
               </button>
-              <button
-                onClick={toggleMute}
-                className="icon-btn"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  border: "1px solid rgba(255,255,255,0.45)",
-                  background: "rgba(255,255,255,0.18)",
-                  backdropFilter: "blur(8px) saturate(150%)",
-                  boxShadow:
-                    "inset 0 0 6px rgba(255,255,255,0.15), 0 2px 10px rgba(0,0,0,0.35)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  transition: "all 0.25s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.26)";
-                  e.currentTarget.style.transform = "scale(1.05)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.18)";
-                  e.currentTarget.style.transform = "scale(1)";
-                }}
-              >
-                <TI
-                  name={muted ? "volume-off" : "volume"}
-                  size={20}
-                  stroke={2}
-                  style={{ opacity: 0.9 }}
-                />
-              </button>
             </div>
           </div>
 
-          {/* lengüeta */}
+          {/* lengüeta visual del panel (solo estética) */}
           <div
             aria-hidden
             style={{

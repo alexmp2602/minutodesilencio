@@ -1,3 +1,4 @@
+// src/components/InteractiveFlower.tsx
 "use client";
 
 import * as THREE from "three";
@@ -7,10 +8,17 @@ import { useGLTF } from "@react-three/drei";
 
 /* ------- encuadre ------- */
 const FIT_HEIGHT = 1.5;
-const OFFSET_Y = -1;
+const OFFSET_Y = -0.9;
 
 /* ---------------- tipos ---------------- */
-type Dyn = { falling: boolean; vel: THREE.Vector3; av: THREE.Vector3 };
+type Dyn = {
+  falling: boolean;
+  vel: THREE.Vector3;
+  av: THREE.Vector3;
+  swayAmp: number;
+  swayFreq: number;
+  phase: number;
+};
 
 type Props = {
   url?: string;
@@ -30,7 +38,7 @@ type Props = {
   floatSpin?: boolean;
 };
 
-const GRAVITY = -3.0; // más suave
+const GRAVITY = -2.4; // suave, caída flotante
 const FLOOR_Y = 0;
 
 const isMesh = (o: THREE.Object3D): o is THREE.Mesh => o instanceof THREE.Mesh;
@@ -113,6 +121,7 @@ function FlowerMesh({
   const [dyn, setDyn] = useState<Record<string, Dyn>>({});
   const [hovered, setHovered] = useState(false);
   const petals = useRef<Set<string>>(new Set());
+  const petalsOpenedRef = useRef(false);
 
   const model = useMemo(() => {
     const g = new THREE.Group();
@@ -157,13 +166,30 @@ function FlowerMesh({
 
   useEffect(() => {
     const set = new Set<string>();
+
+    // abrimos un poquito los pétalos solo una vez (pero menos)
+    if (!petalsOpenedRef.current) {
+      model.traverse((o) => {
+        if (!isMesh(o)) return;
+        const name = o.name ?? "";
+        if (isPetal(name)) {
+          const v = new THREE.Vector3(o.position.x, 0, o.position.z);
+          if (v.lengthSq() > 0.0001) {
+            v.normalize().multiplyScalar(0.035); // antes 0.06 → menos spread
+            o.position.add(v);
+          }
+        }
+      });
+      petalsOpenedRef.current = true;
+    }
+
     model.traverse((o) => {
       if (!isMesh(o)) return;
       const name = o.name ?? "";
-      // sólo pétalos, nunca el tallo ni el centro
       if (isPetal(name)) set.add(o.uuid);
       if (!centerSticky && isCenter(name)) set.add(o.uuid);
     });
+
     petals.current = set;
   }, [model, centerSticky]);
 
@@ -175,12 +201,13 @@ function FlowerMesh({
     if (!g) return;
 
     tRef.current += dt;
+    const t = tRef.current;
 
-    // flotar + girar
+    // flotar + girar flor completa
     if (floatSpin) {
       if (baseYRef.current == null) baseYRef.current = g.position.y;
       const baseY = baseYRef.current!;
-      g.position.y = baseY + Math.sin(tRef.current * 1.2) * 0.06;
+      g.position.y = baseY + Math.sin(t * 1.2) * 0.06;
       g.rotation.y += 0.12 * dt;
     }
 
@@ -196,8 +223,14 @@ function FlowerMesh({
       if (!d?.falling) return;
 
       d.vel.y += GRAVITY * dt;
-      d.vel.multiplyScalar(0.985); // drag suave → caída lenta y flotante
+      d.vel.multiplyScalar(0.985);
       p.position.addScaledVector(d.vel, dt);
+
+      // sway lateral más suave y contenido
+      const swayX = Math.sin(t * d.swayFreq + d.phase) * d.swayAmp * dt * 10.0;
+      const swayZ = Math.cos(t * d.swayFreq + d.phase) * d.swayAmp * dt * 10.0;
+      p.position.x += swayX;
+      p.position.z += swayZ;
 
       const dq = new THREE.Quaternion().setFromEuler(
         new THREE.Euler(d.av.x * dt, d.av.y * dt, d.av.z * dt)
@@ -208,6 +241,7 @@ function FlowerMesh({
         p.position.y = FLOOR_Y;
         d.vel.set(0, 0, 0);
         d.av.set(0, 0, 0);
+        d.swayAmp = 0;
         setDyn((prev) => ({ ...prev, [p.uuid]: { ...d, falling: false } }));
       }
     });
@@ -226,20 +260,28 @@ function FlowerMesh({
     const obj = e.object;
     if (!petals.current.has(obj.uuid)) return;
 
+    // sway más suave y cercano
+    const swayAmp = 0.06 + Math.random() * 0.04; // antes ~0.14+
+    const swayFreq = 1.1 + Math.random() * 0.9;
+    const phase = Math.random() * Math.PI * 2;
+
     setDyn((prev) => ({
       ...prev,
       [obj.uuid]: {
         falling: true,
         vel: new THREE.Vector3(
-          (Math.random() - 0.5) * 0.7,
-          1.4 + Math.random() * 0.8,
-          (Math.random() - 0.5) * 0.7
+          (Math.random() - 0.5) * 0.32, // antes 0.55 / 1.0 → menos horizontal
+          1.15 + Math.random() * 0.5, // caída más suave
+          (Math.random() - 0.5) * 0.32
         ),
         av: new THREE.Vector3(
-          (Math.random() - 0.5) * 1.2,
-          (Math.random() - 0.5) * 1.2,
-          (Math.random() - 0.5) * 1.2
+          (Math.random() - 0.5) * 0.8,
+          (Math.random() - 0.5) * 0.8,
+          (Math.random() - 0.5) * 0.8
         ),
+        swayAmp,
+        swayFreq,
+        phase,
       },
     }));
   };
@@ -262,9 +304,10 @@ export default function InteractiveFlower({
   scale = 1,
   position = [0, 0, 0],
   onHint,
-  petalColor = "#ffffff",
-  centerColor = "#fef6eb",
-  stemColor = "#1b1b1b",
+  // 🎨 Paleta nueva por defecto
+  petalColor = "#D095E7",
+  stemColor = "#006D05",
+  centerColor = "#FFF79B",
   centerSticky = true,
   floatSpin = true,
 }: Props) {
