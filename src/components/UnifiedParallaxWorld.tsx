@@ -764,7 +764,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
                 }}
               />
               {/* 👇 Hint SOLO dentro del jardín y re-montado en cada entrada */}
-              {gardenActive && <GardenHint key={hintEpoch} seconds={3.2} />}
+              {gardenActive && <GardenHint key={hintEpoch} autoRotateMs={3200} />}
               <GardenOverlay />
             </div>
           )}
