@@ -151,7 +151,7 @@ export default function GardenOverlay() {
   React.useEffect(() => setPortalEl(document.body), []);
 
   /* ---------- Sonido ---------- */
-  const muted = useMuteStore((s) => s.muted); // solo lectura, ya no mostramos botón
+  const muted = useMuteStore((s) => s.muted); // solo lectura
   const { play } = useSfx();
 
   /* ---------- Barra de progreso ---------- */
@@ -159,6 +159,12 @@ export default function GardenOverlay() {
   const targetRef = React.useRef(0);
   const DECAY_PER_SEC = 1.2;
   const EASE = 0.12;
+
+  // game over barra vertical
+  const [failed, setFailed] = React.useState(false);
+  const hadProgressRef = React.useRef(false);
+  const failTimeoutRef = React.useRef<number | null>(null);
+  const failedRef = React.useRef(false);
 
   React.useEffect(() => {
     const onProgress = (e: Event) => {
@@ -205,6 +211,40 @@ export default function GardenOverlay() {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // lógica tipo "game over" para la barra del jardín
+  React.useEffect(() => {
+    // marcamos que alguna vez tuvo progreso
+    if (progress > 0 && progress < 100) {
+      hadProgressRef.current = true;
+      // si estaba por dispararse el fail y vuelve a subir, cancelamos
+      if (failTimeoutRef.current) {
+        window.clearTimeout(failTimeoutRef.current);
+        failTimeoutRef.current = null;
+      }
+    }
+
+    if (
+      progress <= 0 &&
+      hadProgressRef.current &&
+      !failedRef.current &&
+      !failTimeoutRef.current
+    ) {
+      failTimeoutRef.current = window.setTimeout(() => {
+        failedRef.current = true;
+        setFailed(true);
+      }, 1000); // 1 segundo para que se vea la barra vacía
+    }
+  }, [progress]);
+
+  React.useEffect(
+    () => () => {
+      if (failTimeoutRef.current) {
+        window.clearTimeout(failTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   /* ---------- Mensajes (Supabase realtime) ---------- */
   const [open, setOpen] = React.useState(false);
@@ -327,6 +367,70 @@ export default function GardenOverlay() {
     <div
       style={{ position: "fixed", inset: 0, zIndex: 70, pointerEvents: "none" }}
     >
+      {/* GAME OVER del jardín */}
+      {failed && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: "auto",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "rgba(18, 39, 230, 0.94)",
+              backdropFilter: "blur(4px)",
+            }}
+          />
+          <div
+            style={{
+              position: "relative",
+              textAlign: "center",
+              padding: "0 24px",
+            }}
+          >
+            <p
+              className="font-mono"
+              style={{
+                color: "#ffffff",
+                fontSize: "clamp(20px, 2.4vw, 30px)",
+                marginBottom: 26,
+              }}
+            >
+              El jardín se apagó
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+                window.location.reload(); // volver a empezar fuerte
+              }}
+              className="font-mono"
+              style={{
+                appearance: "none",
+                border: "2px solid #ffffff",
+                background: "#ffffff",
+                color: "#000000",
+                padding: "10px 26px",
+                fontSize: "clamp(14px, 1.4vw, 18px)",
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+              }}
+            >
+              VOLVER A EMPEZAR
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ZÓCALO SUPERIOR */}
       <TopMessageTape items={items} />
 
@@ -402,16 +506,16 @@ export default function GardenOverlay() {
           pointerEvents: "auto",
         }}
       >
-        {/* Solapa visible cuando está cerrado */}
+        {/* Solapa visible cuando está cerrado (más descubierta) */}
         {!open && (
           <div
             onClick={() => setOpen(true)}
             style={{
               position: "absolute",
               left: "50%",
-              bottom: 8,
+              bottom: 24, // un poco más arriba
               transform: "translateX(-50%)",
-              padding: "6px 18px",
+              padding: "8px 22px",
               borderRadius: "999px 999px 0 0",
               background: "rgba(255,255,255,0.95)",
               color: "#000",
@@ -431,14 +535,14 @@ export default function GardenOverlay() {
           style={{
             margin: "0 auto",
             width: "min(1200px, 94vw)",
-            transform: `translateY(${open ? "0%" : "70%"})`,
+            transform: `translateY(${open ? "0%" : "55%"})`, // menos escondido
             transition: "transform .25s ease",
             position: "relative",
           }}
         >
           <div
             style={{
-              background: "rgba(5, 30, 5, 0.6)",
+              background: "rgba(0, 0, 0, 0.8)", // fondo más oscuro para contraste
               borderTop: "1px solid rgba(255, 255, 255, 0.4)",
               borderLeft: "1px solid rgba(255, 255, 255, 0.25)",
               borderRight: "1px solid rgba(255, 255, 255, 0.25)",
@@ -454,13 +558,15 @@ export default function GardenOverlay() {
                 value={txt}
                 onChange={(e) => setTxt(e.target.value)}
                 maxLength={50}
+                className="garden-message-input"
                 placeholder="Deja tu mensaje de despedida #QEPD (se comparte en vivo)..."
                 style={{
                   flex: 1,
                   padding: "11px 14px",
                   borderRadius: 12,
                   border: "1px solid rgba(255,255,255,.85)",
-                  background: "rgba(255,255,255,.92)",
+                  background: "#1227e6", // azul sólido
+                  color: "#ffffff",
                   outline: "none",
                   fontSize: 14,
                 }}
@@ -518,6 +624,13 @@ export default function GardenOverlay() {
           />
         </div>
       </div>
+
+      {/* estilos para placeholder blanco */}
+      <style jsx>{`
+        .garden-message-input::placeholder {
+          color: rgba(255, 255, 255, 0.8);
+        }
+      `}</style>
 
       <Floaties />
     </div>
