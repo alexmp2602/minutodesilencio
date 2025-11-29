@@ -125,6 +125,23 @@ export default function TextOverlay({ progress }: { progress: number }) {
     };
   }, [completed]);
 
+  /* 🔒 BLOQUEAR SCROLL SOLO DURANTE LA FASE "LOADING" */
+  useEffect(() => {
+    if (phase !== "loading") return;
+
+    const prevent = (e: Event) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener("wheel", prevent, { passive: false });
+    window.addEventListener("touchmove", prevent, { passive: false });
+
+    return () => {
+      window.removeEventListener("wheel", prevent as EventListener);
+      window.removeEventListener("touchmove", prevent as EventListener);
+    };
+  }, [phase]);
+
   // ---------- GAME OVER UI ----------
   if (ritualFailed) {
     const handleRestart = () => {

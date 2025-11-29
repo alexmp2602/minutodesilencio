@@ -19,7 +19,7 @@ type Msg = {
 };
 
 /* ----------------------------- Utilidades ----------------------------- */
-const clamp = (n: number, a = 0, b = 99) => Math.max(a, Math.min(b, n));
+const clamp = (n: number, a = 0, b = 100) => Math.max(a, Math.min(b, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const nowTs = () => Date.now();
 const STORAGE_KEY = "mds:messages";
@@ -113,7 +113,7 @@ function TopMessageTape({ items }: { items: Msg[] }) {
         }
         .tapeTop .inner {
           display: inline-block;
-          animation: mscroll 28s linear infinite;
+          animation: mscroll 90s linear infinite; /* lento para leer */
         }
         .pill {
           display: inline-block;
@@ -154,78 +154,78 @@ export default function GardenOverlay() {
   const muted = useMuteStore((s) => s.muted); // solo lectura
   const { play } = useSfx();
 
-  /* ---------- Barra de progreso ---------- */
-  const [progress, setProgress] = React.useState(0);
-  const targetRef = React.useRef(0);
-  const DECAY_PER_SEC = 1.2;
+  /* ---------- Barra de progreso (time-based) ---------- */
+  const LIFETIME_MS = 90_000; // ~90s de vida base
   const EASE = 0.12;
 
-  // game over barra vertical
+  const [progress, setProgress] = React.useState(100);
+  const startTsRef = React.useRef<number | null>(null);
+  const bonusRef = React.useRef(0); // ajustes por flores (±buffer)
+
   const [failed, setFailed] = React.useState(false);
   const hadProgressRef = React.useRef(false);
   const failTimeoutRef = React.useRef<number | null>(null);
   const failedRef = React.useRef(false);
 
   React.useEffect(() => {
-    const onProgress = (e: Event) => {
-      const de = e as CustomEvent<{ percent?: number }>;
-      const p = de?.detail?.percent;
-      if (typeof p === "number") targetRef.current = clamp(Math.floor(p * 100));
-    };
-    const onKill = () => (targetRef.current = clamp(targetRef.current + 7));
-    const onRegrow = () => (targetRef.current = clamp(targetRef.current - 6));
+    startTsRef.current = Date.now();
 
-    window.addEventListener("ms:flowers:progress", onProgress as EventListener);
+    let raf = 0;
+    const loop = () => {
+      const start = startTsRef.current ?? Date.now();
+      if (!startTsRef.current) startTsRef.current = start;
+
+      const elapsed = Date.now() - start;
+      const t = Math.min(1, elapsed / LIFETIME_MS); // 0 → 1
+      const base = 100 * (1 - t); // 100 → 0 por tiempo
+
+      const target = clamp(base + bonusRef.current);
+      setProgress((prev) => {
+        const next = lerp(prev, target, EASE);
+        return Math.abs(next - target) < 0.2 ? target : next;
+      });
+
+      raf = requestAnimationFrame(loop);
+    };
+
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [LIFETIME_MS]);
+
+  // clicks sobre flores modifican el "bonus"
+  React.useEffect(() => {
+    const onKill = () => {
+      bonusRef.current = clamp(bonusRef.current + 7, -30, 30);
+    };
+    const onRegrow = () => {
+      bonusRef.current = clamp(bonusRef.current - 5, -30, 30);
+    };
+
     window.addEventListener("ms:flowers:kill", onKill as EventListener);
     window.addEventListener("ms:flower:killed", onKill as EventListener);
     window.addEventListener("ms:flower:regrow", onRegrow as EventListener);
+
     return () => {
-      window.removeEventListener(
-        "ms:flowers:progress",
-        onProgress as EventListener
-      );
       window.removeEventListener("ms:flowers:kill", onKill as EventListener);
       window.removeEventListener("ms:flower:killed", onKill as EventListener);
       window.removeEventListener("ms:flower:regrow", onRegrow as EventListener);
     };
   }, []);
 
+  // 🔥 lógica de game over: si llega a 0, mostramos pantalla
   React.useEffect(() => {
-    const id = setInterval(() => {
-      targetRef.current = clamp(targetRef.current - DECAY_PER_SEC);
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  React.useEffect(() => {
-    let raf = 0;
-    const tick = () => {
-      setProgress((p) => {
-        const next = lerp(p, targetRef.current, EASE);
-        return Math.abs(next - targetRef.current) < 0.05
-          ? targetRef.current
-          : next;
-      });
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  // lógica tipo "game over" para la barra del jardín
-  React.useEffect(() => {
-    // marcamos que alguna vez tuvo progreso
-    if (progress > 0 && progress < 100) {
+    if (progress < 100) {
       hadProgressRef.current = true;
-      // si estaba por dispararse el fail y vuelve a subir, cancelamos
-      if (failTimeoutRef.current) {
-        window.clearTimeout(failTimeoutRef.current);
-        failTimeoutRef.current = null;
-      }
+    }
+
+    // si la barra vuelve a subir por encima de 2% cancelamos un posible timeout
+    if (failTimeoutRef.current && progress > 2) {
+      window.clearTimeout(failTimeoutRef.current);
+      failTimeoutRef.current = null;
     }
 
     if (
-      progress <= 0 &&
+      progress <= 1 && // barra prácticamente en cero
       hadProgressRef.current &&
       !failedRef.current &&
       !failTimeoutRef.current
@@ -233,7 +233,7 @@ export default function GardenOverlay() {
       failTimeoutRef.current = window.setTimeout(() => {
         failedRef.current = true;
         setFailed(true);
-      }, 1000); // 1 segundo para que se vea la barra vacía
+      }, 1000); // 1s para que se vea el 0%
     }
   }, [progress]);
 
@@ -362,6 +362,14 @@ export default function GardenOverlay() {
     if (!muted) play("plant", { volume: 0.55 });
   }
 
+  // fade negro según barra, intensificado solo al final
+  const t = 1 - progress / 100; // 0 barra llena, 1 barra vacía
+  const eased = Math.pow(Math.max(0, Math.min(1, t)), 2.2);
+  const dimOpacity = 0.28 * eased;
+
+  // glow crítico en la barra
+  const isCritical = progress <= 20;
+
   /* ---------------------------- UI ---------------------------- */
   const ui = (
     <div
@@ -409,7 +417,7 @@ export default function GardenOverlay() {
               type="button"
               onClick={() => {
                 window.scrollTo({ top: 0, behavior: "smooth" });
-                window.location.reload(); // volver a empezar fuerte
+                window.location.reload();
               }}
               className="font-mono"
               style={{
@@ -431,10 +439,24 @@ export default function GardenOverlay() {
         </div>
       )}
 
-      {/* ZÓCALO SUPERIOR */}
+      {/* Fade oscuro del jardín */}
+      <div
+        aria-hidden
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "black",
+          opacity: dimOpacity,
+          transition: "opacity 0.35s linear",
+          pointerEvents: "none",
+          zIndex: 60,
+        }}
+      />
+
+      {/* Zócalo superior */}
       <TopMessageTape items={items} />
 
-      {/* 🟩 Barra vertical más grande */}
+      {/* Barra vertical */}
       <div
         style={{
           position: "fixed",
@@ -447,11 +469,13 @@ export default function GardenOverlay() {
           borderRadius: 14,
           backdropFilter: "blur(10px)",
           background: "rgba(0,0,0,.3)",
-          boxShadow:
-            "0 10px 30px rgba(0,0,0,.3), inset 0 0 10px rgba(255,255,255,.12)",
+          boxShadow: isCritical
+            ? "0 0 22px rgba(255,80,80,0.55), 0 10px 30px rgba(0,0,0,.3), inset 0 0 10px rgba(255,255,255,.12)"
+            : "0 10px 30px rgba(0,0,0,.3), inset 0 0 10px rgba(255,255,255,.12)",
           display: "grid",
           gridTemplateRows: "1fr auto",
           padding: 8,
+          zIndex: 80,
         }}
       >
         <div
@@ -492,7 +516,7 @@ export default function GardenOverlay() {
         </div>
       </div>
 
-      {/* 🔻 Interfaz inferior */}
+      {/* Interfaz inferior */}
       <div
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
@@ -506,14 +530,13 @@ export default function GardenOverlay() {
           pointerEvents: "auto",
         }}
       >
-        {/* Solapa visible cuando está cerrado (más descubierta) */}
         {!open && (
           <div
             onClick={() => setOpen(true)}
             style={{
               position: "absolute",
               left: "50%",
-              bottom: 24, // un poco más arriba
+              bottom: 24,
               transform: "translateX(-50%)",
               padding: "8px 22px",
               borderRadius: "999px 999px 0 0",
@@ -535,14 +558,14 @@ export default function GardenOverlay() {
           style={{
             margin: "0 auto",
             width: "min(1200px, 94vw)",
-            transform: `translateY(${open ? "0%" : "55%"})`, // menos escondido
+            transform: `translateY(${open ? "0%" : "55%"})`,
             transition: "transform .25s ease",
             position: "relative",
           }}
         >
           <div
             style={{
-              background: "rgba(0, 0, 0, 0.8)", // fondo más oscuro para contraste
+              background: "rgba(0, 0, 0, 0.8)",
               borderTop: "1px solid rgba(255, 255, 255, 0.4)",
               borderLeft: "1px solid rgba(255, 255, 255, 0.25)",
               borderRight: "1px solid rgba(255, 255, 255, 0.25)",
@@ -565,7 +588,7 @@ export default function GardenOverlay() {
                   padding: "11px 14px",
                   borderRadius: 12,
                   border: "1px solid rgba(255,255,255,.85)",
-                  background: "#1227e6", // azul sólido
+                  background: "#1227e6",
                   color: "#ffffff",
                   outline: "none",
                   fontSize: 14,
@@ -608,7 +631,6 @@ export default function GardenOverlay() {
             </div>
           </div>
 
-          {/* lengüeta visual del panel (solo estética) */}
           <div
             aria-hidden
             style={{
@@ -625,7 +647,6 @@ export default function GardenOverlay() {
         </div>
       </div>
 
-      {/* estilos para placeholder blanco */}
       <style jsx>{`
         .garden-message-input::placeholder {
           color: rgba(255, 255, 255, 0.8);
