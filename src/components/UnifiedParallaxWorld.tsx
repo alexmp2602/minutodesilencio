@@ -50,17 +50,18 @@ const easeInOut = (t: number) => {
   return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
 };
 
-/** ✨ offset suave para “elevar” el bloque de nubes/minuto sin alejar tanto la cámara */
+// Offset vertical para levantar un poco la capa de nubes
 const MINUTE_YOFF = 0.55;
 
-/** 🎨 Paleta */
-const INTRO_CLEAR = new THREE.Color("#1227e6"); // azul inicio (NO tocar)
-const GARDEN_CLEAR = new THREE.Color("#69a9ff"); // fondo/cielo del jardín
-const GARDEN_FOG = new THREE.Color("#8fbeff"); // niebla muy cercana al cielo
+// Colores base del cielo y la niebla
+const INTRO_CLEAR = new THREE.Color("#1227e6");
+const GARDEN_CLEAR = new THREE.Color("#69a9ff");
+const GARDEN_FOG = new THREE.Color("#8fbeff");
 
-/* --------- marcador pulsante --------- */
+// Marcador pulsante para mostrar la flor propia
 function FocusPulse({ pos }: { pos: THREE.Vector3 }) {
   const ref = useRef<THREE.Mesh>(null);
+
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     const s = 1 + 0.15 * Math.sin(t * 3);
@@ -70,6 +71,7 @@ function FocusPulse({ pos }: { pos: THREE.Vector3 }) {
       mat.opacity = 0.5 + 0.4 * Math.sin(t * 3 + Math.PI / 2);
     }
   });
+
   return (
     <mesh
       ref={ref}
@@ -77,12 +79,12 @@ function FocusPulse({ pos }: { pos: THREE.Vector3 }) {
       rotation={[-Math.PI / 2, 0, 0]}
     >
       <ringGeometry args={[0.28, 0.42, 48]} />
-      <meshBasicMaterial color={"#2300ff"} transparent opacity={0.8} />
+      <meshBasicMaterial color="#2300ff" transparent opacity={0.8} />
     </mesh>
   );
 }
 
-/* --------- proximidad con histéresis --------- */
+// Detecta si la cámara está “dentro” del jardín con un poco de histéresis
 function ProximitySensor({
   onSetGardenActive,
   controlsRef,
@@ -117,7 +119,7 @@ function ProximitySensor({
   return null;
 }
 
-/* --------- vuelo al plantar --------- */
+// Maneja el vuelo de cámara cuando se planta una flor
 function PlantingLogic({
   controlsRef,
   setGardenActive,
@@ -149,6 +151,7 @@ function PlantingLogic({
       const dir = new THREE.Vector3().subVectors(startPos, focus).setY(0);
       if (dir.lengthSq() < 1e-3) dir.set(1, 0, 0);
       dir.normalize();
+
       const endTarget = focus.clone().setY(0.6);
       const endPos = focus.clone().add(dir.multiplyScalar(3.2)).setY(2.6);
 
@@ -185,6 +188,7 @@ function PlantingLogic({
         })
       );
     };
+
     window.addEventListener("ms:plant", onPlant as EventListener);
     return () =>
       window.removeEventListener("ms:plant", onPlant as EventListener);
@@ -199,6 +203,7 @@ function PlantingLogic({
   useFrame((_, dt) => {
     const f = flightRef.current;
     if (!f) return;
+
     f.t += dt;
     const k = easeInOut(clamp01(f.t / f.dur));
 
@@ -218,13 +223,16 @@ function PlantingLogic({
       c.target.copy(tgtPos);
       c.update();
     }
-    if (k >= 1) flightRef.current = null;
+
+    if (k >= 1) {
+      flightRef.current = null;
+    }
   });
 
   return null;
 }
 
-/* --------- rig de descenso (valores “clásicos”) --------- */
+// Trayectoria “clásica” de descenso durante el minuto
 function TimelineRig({
   minuteK,
   gardenActive,
@@ -260,9 +268,11 @@ function TimelineRig({
     const r = THREE.MathUtils.lerp(startSph.radius, endSph.radius, k);
     const phi = THREE.MathUtils.lerp(startSph.phi, endSph.phi, k);
     const theta = THREE.MathUtils.lerp(startSph.theta, endSph.theta, k);
+
     const pos = new THREE.Vector3()
       .setFromSpherical(new THREE.Spherical(r, phi, theta))
       .add(target);
+
     camera.position.lerp(pos, Math.min(1, dt * 4));
     (camera as THREE.PerspectiveCamera).lookAt(
       target.x,
@@ -280,10 +290,11 @@ function TimelineRig({
       f.far = THREE.MathUtils.lerp(FAR_START, FAR_END, k);
     }
   });
+
   return null;
 }
 
-/* --------- “tinte” del entorno (fondo + color de niebla) --------- */
+// Hace de “fader” entre la intro azul y el jardín celeste
 function EnvTint({ inGarden }: { inGarden: boolean }) {
   const { gl, scene } = useThree();
   const clear = useRef(INTRO_CLEAR.clone());
@@ -312,13 +323,14 @@ function EnvTint({ inGarden }: { inGarden: boolean }) {
   return null;
 }
 
-/* --------- publica accesos globales --------- */
+// Expone cámara y controles en window para debug/ajustes
 function PublishGlobals({
   controlsRef,
 }: {
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
 }) {
   const { camera } = useThree();
+
   useEffect(() => {
     window.__camera = camera;
     const c = controlsRef.current;
@@ -332,15 +344,17 @@ function PublishGlobals({
         setEnabled: (enabled: boolean) => (c.enabled = enabled),
       };
     }
+
     return () => {
       if (window.__camera === camera) delete window.__camera;
       if (window.__controls) delete window.__controls;
     };
   }, [camera, controlsRef]);
+
   return null;
 }
 
-/* --------- bucle de autoflight (vuelo tras el minuto) --------- */
+// Vuelo automático hacia el jardín, disparado desde TextOverlay
 function AutoFlightLoop({
   autoFlightRef,
   controlsRef,
@@ -367,7 +381,11 @@ function AutoFlightLoop({
     const k = easeInOut(clamp01(f.t / f.dur));
 
     const camPos = new THREE.Vector3().lerpVectors(f.startPos, f.endPos, k);
-    const tgtPos = new THREE.Vector3().lerpVectors(f.startTarget, f.endTarget, k);
+    const tgtPos = new THREE.Vector3().lerpVectors(
+      f.startTarget,
+      f.endTarget,
+      k
+    );
 
     camera.position.copy(camPos);
     (camera as THREE.PerspectiveCamera).lookAt(tgtPos);
@@ -397,7 +415,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
   const [forceEntered, setForceEntered] = useState(false);
   const [myFlowerPos, setMyFlowerPos] = useState<THREE.Vector3 | null>(null);
 
-  // 👇 para re-montar el hint cada vez que se entra al jardín
+  // Re-monto el hint cada vez que se vuelve a entrar al jardín
   const [hintEpoch, setHintEpoch] = useState(0);
   const wasActiveRef = useRef(false);
   useEffect(() => {
@@ -410,7 +428,6 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // 🔹 destino y ref del vuelo automático post-minuto
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0.6, 0), []);
   const autoFlightRef = useRef<{
     t: number;
@@ -421,12 +438,13 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
     endTarget: THREE.Vector3;
   } | null>(null);
 
-  // dispara el vuelo hacia el jardín
+  // Vuelo controlado hacia el jardín
   const startAutoEnter = useCallback(() => {
     if (autoFlightRef.current || gardenActive) return;
 
     const c = controlsRef.current || null;
-    const cam = (window.__camera as THREE.PerspectiveCamera | undefined) || null;
+    const cam =
+      (window.__camera as THREE.PerspectiveCamera | undefined) || null;
 
     const startPos = cam ? cam.position.clone() : new THREE.Vector3(0, 28, 30);
     const startTarget = c?.target?.clone() ?? defaultTarget.clone();
@@ -443,29 +461,27 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       endTarget,
     };
 
-    // activar overlay visual (tinte/jardín) durante el vuelo
     setForceEntered(true);
 
-    // deshabilitar input durante el vuelo
     if (c) c.enabled = false;
 
-    // empujar scroll al fondo (por si el overlay no lo dejó abajo)
     requestAnimationFrame(() =>
       window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
     );
   }, [gardenActive, defaultTarget]);
 
-  // listeners de los eventos que dispara TextOverlay
+  // Eventos que dispara TextOverlay cuando termina el ritual
   useEffect(() => {
     const onGo = () => startAutoEnter();
     window.addEventListener("ui:overlay:dismissed", onGo as EventListener);
-    window.addEventListener("silence:completed", onGo as EventListener); // respaldo
+    window.addEventListener("silence:completed", onGo as EventListener);
     return () => {
       window.removeEventListener("ui:overlay:dismissed", onGo as EventListener);
       window.removeEventListener("silence:completed", onGo as EventListener);
     };
   }, [startAutoEnter]);
 
+  // Respeta prefers-reduced-motion
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onChange = () => setReducedMotion(mq.matches);
@@ -474,6 +490,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
 
+  // Entrada directa al jardín con hash (#main)
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash === "#main") {
       setForceEntered(true);
@@ -486,7 +503,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
 
   const minuteK = clamp01(minuteProgress);
 
-  // scroll passthrough solo fuera del jardín
+  // Passthrough de scroll cuando todavía no estás “dentro” del jardín
   const lastTouchY = useRef<number | null>(null);
   const scrollByPage = (dy: number) => {
     const el =
@@ -495,9 +512,11 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       (document.body as HTMLElement);
     el.scrollTop += dy;
   };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const onWheel = (e: WheelEvent) => {
       if (!gardenActive) {
         e.preventDefault();
@@ -518,10 +537,12 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       }
     };
     const onTouchEnd = () => (lastTouchY.current = null);
+
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("touchstart", onTouchStart, { passive: false });
     canvas.addEventListener("touchmove", onTouchMove, { passive: false });
     canvas.addEventListener("touchend", onTouchEnd, { passive: true });
+
     return () => {
       canvas.removeEventListener("wheel", onWheel as EventListener);
       canvas.removeEventListener("touchstart", onTouchStart as EventListener);
@@ -530,11 +551,12 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
     };
   }, [gardenActive]);
 
-  // bloquear scroll dentro del jardín
+  // Dentro del jardín bloqueo scroll nativo y dejo sólo OrbitControls
   useEffect(() => {
     const root = document.documentElement;
     const body = document.body;
     const canvas = canvasRef.current;
+
     if (gardenActive) {
       body.style.overflow = "hidden";
       root.style.overscrollBehavior = "contain";
@@ -544,6 +566,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       root.style.overscrollBehavior = "";
       if (canvas) (canvas.style as CSSStyleDeclaration).touchAction = "";
     }
+
     return () => {
       body.style.overflow = "";
       root.style.overscrollBehavior = "";
@@ -571,13 +594,13 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       style={{ width: "100%", height: "100%" }}
       onCreated={({ gl, scene }) => {
         canvasRef.current = gl.domElement as HTMLCanvasElement;
-        gl.setClearColor(INTRO_CLEAR, 1); // 👈 azul de inicio
+        gl.setClearColor(INTRO_CLEAR, 1);
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 0.68;
         gl.shadowMap.enabled = true;
         gl.shadowMap.type = THREE.PCFSoftShadowMap;
-        scene.fog = new THREE.Fog(INTRO_CLEAR.clone(), 8, 120); // 👈 arranca azul
+        scene.fog = new THREE.Fog(INTRO_CLEAR.clone(), 8, 120);
       }}
       onPointerDown={(e) => {
         if (e.button === 2 || e.button === 0) setGrabbing(true);
@@ -592,7 +615,6 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
       />
 
       <MuteProvider>
-        {/* 🎨 Tinte dinámico de fondo+niebla */}
         <EnvTint inGarden={overlayVisible} />
 
         <TimelineRig minuteK={minuteK} gardenActive={overlayVisible} />
@@ -606,7 +628,6 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           setMyFlowerPos={setMyFlowerPos}
         />
 
-        {/* 🚀 Vuelo automático post-minuto */}
         <AutoFlightLoop
           autoFlightRef={autoFlightRef}
           controlsRef={controlsRef}
@@ -618,7 +639,6 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           }}
         />
 
-        {/* Cielo + nubes “levemente” elevadas */}
         <Sky
           sunPosition={[0, 5.5, -10]}
           turbidity={overlayVisible ? 6 : 10}
@@ -629,6 +649,7 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
           inclination={0.47}
           azimuth={180}
         />
+
         <group position={[0, 3.8 + MINUTE_YOFF, 0]}>
           <Clouds material={THREE.MeshLambertMaterial}>
             <Cloud
@@ -688,7 +709,6 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
               bladeHeight={0.65}
               wind={0.8}
             />
-            {/* ⬇️ Montaje para el spawner/lógica de flores (Etapa 2) */}
             <Flowers gardenActive={overlayVisible} />
           </group>
         </Suspense>
@@ -722,40 +742,41 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
 
         <PublishGlobals controlsRef={controlsRef} />
 
-        {/* audio ambiental cuando el overlay es visible */}
+        {/* Audio ambiental del jardín */}
         <Html style={{ pointerEvents: "none" }}>
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
-              {/* Ambient del JARDÍN (se cruza con el azul que maneja TextOverlay) */}
-              <AmbientAudio src="/audio/ambient.mp3" volume={0.16} fadeMs={360} />
+              <AmbientAudio
+                src="/audio/ambient.mp3"
+                volume={0.16}
+                fadeMs={360}
+              />
             </div>
           )}
         </Html>
 
-        {/* UI 2D sobre la escena */}
+        {/* HUD y overlays 2D sobre la escena */}
         <Html fullscreen pointerEvents="none" zIndexRange={[50, 0]}>
           {overlayVisible && (
             <div style={{ pointerEvents: "auto" }}>
-              {/* Root general existente (mantengo) */}
               <div
                 id="overlay-root"
                 style={{ position: "fixed", inset: 0, zIndex: 60 }}
               />
-              {/* NUEVOS puntos de montaje (sin lógica aún) */}
               <div
-                id="hud-root" /* barra/porcentaje a la izquierda */
+                id="hud-root"
                 style={{
                   position: "fixed",
                   top: 0,
                   bottom: 0,
                   left: 0,
-                  width: "0px", // será controlado por GardenOverlay/Progress HUD
+                  width: "0px",
                   zIndex: 70,
                   pointerEvents: "none",
                 }}
               />
               <div
-                id="fx-root" /* mensajes flotantes (#qepd, #rip, …) */
+                id="fx-root"
                 style={{
                   position: "fixed",
                   inset: 0,
@@ -763,8 +784,9 @@ export default function UnifiedParallaxWorld({ minuteProgress = 0 }: Props) {
                   pointerEvents: "none",
                 }}
               />
-              {/* 👇 Hint SOLO dentro del jardín y re-montado en cada entrada */}
-              {gardenActive && <GardenHint key={hintEpoch} autoRotateMs={3200} />}
+              {gardenActive && (
+                <GardenHint key={hintEpoch} autoRotateMs={3200} />
+              )}
               <GardenOverlay />
             </div>
           )}

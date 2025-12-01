@@ -11,10 +11,10 @@ type GLSLShader = {
   fragmentShader: string;
 };
 
-/* ===== Config ===== */
+/* Config */
 const GARDEN_RADIUS_DEFAULT = 60;
 
-/* RNG */
+/* RNG simple */
 function mulberry32(seed = 1) {
   let t = seed >>> 0;
   return () => {
@@ -25,17 +25,25 @@ function mulberry32(seed = 1) {
   };
 }
 
-/** Relieve aproximado para ajustar base Y */
-function sampleHillHeight(x: number, z: number, size = 200, amplitude = 0.6) {
+/** Relieve aproximado para alinear base en Y */
+function sampleHillHeight(
+  x: number,
+  z: number,
+  size = 200,
+  amplitude = 0.6
+): number {
   const nx = x / (size / 2);
   const ny = z / (size / 2);
+
   let h =
     0.55 * Math.sin(nx * Math.PI * 0.9) * Math.cos(ny * Math.PI * 0.8) +
     0.28 * Math.sin((nx + ny) * Math.PI * 0.55) +
     0.18 * Math.cos((nx - ny) * Math.PI * 0.5);
+
   const r = Math.sqrt(nx * nx + ny * ny);
   const falloff = 1 - Math.min(1, Math.pow(r / 1.4, 2.2));
   h *= Math.max(0, falloff);
+
   return h * amplitude;
 }
 
@@ -43,7 +51,7 @@ type Props = {
   count?: number;
   terrainSize?: number;
   terrainAmplitude?: number;
-  /** Radio del jardín (distribución en disco) */
+  // Radio del jardín (distribución en disco)
   areaRadius?: number;
   bladeHeight?: number;
   heightJitter?: number;
@@ -74,7 +82,7 @@ export default function GrassField({
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const shaderRef = useRef<GLSLShader | null>(null);
 
-  /* Geometría de hoja */
+  // Geometría de la hoja
   const bladeGeom = useMemo(() => {
     const h = 1;
     const w = 0.045;
@@ -86,13 +94,13 @@ export default function GrassField({
     return geom;
   }, []);
 
-  /* Material (viento) */
+  // Material con deformación por viento
   const material = useMemo(() => {
     const col = new THREE.Color(color as string | number | THREE.Color);
     const m = new THREE.MeshStandardMaterial({
       color: col,
       roughness: 0.95,
-      metalness: 0.0,
+      metalness: 0,
       side: THREE.DoubleSide,
       vertexColors: false,
       toneMapped: true,
@@ -118,8 +126,8 @@ export default function GrassField({
           vY = position.y;
           vPhase = aPhase;
 
-          float sway = sin( (uTime*0.8) + aPhase*6.2831 + position.y*1.2 ) * 0.6;
-          float gust = sin( (uTime*0.2) + aPhase*12.0 ) * 0.4;
+          float sway = sin((uTime * 0.8) + aPhase * 6.2831 + position.y * 1.2) * 0.6;
+          float gust = sin((uTime * 0.2) + aPhase * 12.0) * 0.4;
           float bend = (sway + gust) * uWind;
 
           transformed.x += bend * pow(vY, 1.5);
@@ -136,11 +144,13 @@ export default function GrassField({
         shader.fragmentShader.replace(
           "#include <color_fragment>",
           `
-          diffuseColor.rgb *= mix(vec3(0.95, 0.97, 0.95),
-                                  vec3(1.05, 1.08, 1.04),
-                                  clamp(vY, 0.0, 1.0));
+          diffuseColor.rgb *= mix(
+            vec3(0.95, 0.97, 0.95),
+            vec3(1.05, 1.08, 1.04),
+            clamp(vY, 0.0, 1.0)
+          );
 
-          float jitter = 1.0 + (fract(sin(vPhase*43758.5453)*43758.5453) - 0.5) * 0.12;
+          float jitter = 1.0 + (fract(sin(vPhase * 43758.5453) * 43758.5453) - 0.5) * 0.12;
           diffuseColor.rgb *= jitter;
 
           #include <color_fragment>
@@ -155,7 +165,7 @@ export default function GrassField({
     return m;
   }, [color, wind]);
 
-  /* Instancias (en disco) */
+  // Datos de instancias
   const { aScale, aPhase, matrices } = useMemo(() => {
     const dummy = new THREE.Object3D();
     const aScale = new Float32Array(count);
@@ -168,7 +178,7 @@ export default function GrassField({
       const p = sampleInDisk(areaRadius, rng);
       const y = sampleHillHeight(p.x, p.z, terrainSize, terrainAmplitude);
 
-      aScale[i] = bladeHeight * (1.0 + (rng() - 0.5) * heightJitter * 2.0);
+      aScale[i] = bladeHeight * (1 + (rng() - 0.5) * heightJitter * 2.0);
       const rotY = rng() * Math.PI * 2;
 
       dummy.position.set(p.x, y, p.z);
@@ -192,13 +202,18 @@ export default function GrassField({
 
   const applyInstancedAttributes = (mesh: THREE.InstancedMesh | null) => {
     if (!mesh) return;
-    for (let i = 0; i < count; i++) mesh.setMatrixAt(i, matrices[i]);
+
+    for (let i = 0; i < count; i++) {
+      mesh.setMatrixAt(i, matrices[i]);
+    }
+
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
 
     const g = mesh.geometry as THREE.InstancedBufferGeometry;
     g.setAttribute("aScale", new THREE.InstancedBufferAttribute(aScale, 1));
     g.setAttribute("aPhase", new THREE.InstancedBufferAttribute(aPhase, 1));
+
     (g.getAttribute("aScale") as THREE.BufferAttribute).setUsage(
       THREE.StaticDrawUsage
     );
@@ -215,10 +230,14 @@ export default function GrassField({
   useFrame(({ clock }) => {
     const sh = shaderRef.current;
     if (!sh?.uniforms) return;
+
     (sh.uniforms.uTime as THREE.IUniform<number>).value =
       clock.getElapsedTime();
+
     const uW = sh.uniforms.uWind as THREE.IUniform<number>;
-    if (uW.value !== wind) uW.value = wind;
+    if (uW.value !== wind) {
+      uW.value = wind;
+    }
   });
 
   useEffect(() => {

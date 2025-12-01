@@ -8,7 +8,7 @@ import { useFrame } from "@react-three/fiber";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import useSfx from "@/hooks/useSfx";
 
-/** ===== Config ===== */
+// Parámetros generales
 const MODEL_URL = "/models/flower.glb";
 const GARDEN_RADIUS = 60;
 const MAX_FLOWERS = 140;
@@ -20,12 +20,12 @@ const MIN_SEPARATION = 1.0;
 const HITBOX_RADIUS = 0.75;
 const HITBOX_HEIGHT = 2.6;
 
-/** ===== Colores (lineales) ===== */
+// Colores
 const STEM_COLOR = new THREE.Color("#036200");
 const PETAL_COLOR = new THREE.Color("#FBDDF5");
 const ANTHER_COLOR = PETAL_COLOR.clone();
 
-/** ===== GLB merge en una sola geometry ===== */
+// Datos del GLB mergeado en una sola geometry
 type GLBData = {
   geom: THREE.BufferGeometry | null;
   baseScale: number;
@@ -44,14 +44,17 @@ function ensureColorAttribute(g: THREE.BufferGeometry) {
 
 function useMergedFlowerGLB(url = MODEL_URL): GLBData {
   const gltf: import("three-stdlib").GLTF | null = useGLTF(url);
+
   return useMemo(() => {
     if (!gltf?.scene) return { geom: null, baseScale: 1, loaded: false };
 
     const parts: THREE.BufferGeometry[] = [];
     gltf.scene.updateMatrixWorld(true);
+
     gltf.scene.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh || !mesh.geometry) return;
+
       const g = mesh.geometry.clone();
       g.applyMatrix4(mesh.matrixWorld);
       (g as THREE.BufferGeometry).morphAttributes = {} as Record<
@@ -71,13 +74,13 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
     merged.computeBoundingBox();
     const bb = merged.boundingBox!;
     const height = Math.max(0.0001, bb.max.y - bb.min.y);
+
+    // Apoyar en Y=0
     merged.translate(0, -bb.min.y, 0);
     merged.computeBoundingBox();
     const maxY = merged.boundingBox!.max.y;
 
     const pos = merged.getAttribute("position") as THREE.BufferAttribute;
-    the: {
-    }
     const col = merged.getAttribute("color") as THREE.BufferAttribute;
     const arr = col.array as Float32Array;
 
@@ -92,6 +95,7 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
       antG = ANTHER_COLOR.g,
       antB = ANTHER_COLOR.b;
 
+    // Asignar color en función de la altura
     for (let i = 0; i < pos.count; i++) {
       const ny = pos.getY(i) / maxY;
       if (ny <= STEM_TOP) {
@@ -112,21 +116,24 @@ function useMergedFlowerGLB(url = MODEL_URL): GLBData {
         }
       }
     }
+
     col.needsUpdate = true;
     merged.computeVertexNormals();
     merged.computeBoundingSphere();
+
     return { geom: merged, baseScale: 1 / height, loaded: true };
   }, [gltf]);
 }
+
 useGLTF.preload(MODEL_URL);
 
-/** ===== Utils ===== */
+// Utilidades
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const choice = <T,>(arr: T[]) => arr[(Math.random() * arr.length) | 0];
 
 const RIP_TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
 
-/** Yaw hacia el centro (0,0,0) */
+// Yaw hacia el centro (0,0,0)
 const FORWARD_BIAS = 0;
 function yawToCenter(x: number, z: number) {
   return Math.atan2(-x, -z) + FORWARD_BIAS;
@@ -139,6 +146,7 @@ function clampToDisk(x: number, z: number, r: number) {
   const d = Math.sqrt(d2);
   return [(x / d) * r * 0.98, (z / d) * r * 0.98] as const;
 }
+
 function nonOverlappingPosition(existing: THREE.Vector3[], r: number) {
   for (let i = 0; i < 40; i++) {
     const rad = rand(2.5, r - 2);
@@ -156,7 +164,7 @@ function nonOverlappingPosition(existing: THREE.Vector3[], r: number) {
   return new THREE.Vector3(rand(-r * 0.7, r * 0.7), 0, rand(-r * 0.7, r * 0.7));
 }
 
-/** ===== Estado ===== */
+// Estado
 type LifeState = "growing" | "alive" | "dying" | "dead";
 type Item = {
   id: number;
@@ -169,13 +177,13 @@ type Item = {
   state: LifeState;
   respawnAt: number;
 };
+
 type Props = { gardenActive?: boolean };
 
 export default function Flowers({ gardenActive = false }: Props) {
   const { geom, baseScale, loaded } = useMergedFlowerGLB();
   const { play } = useSfx();
 
-  // InstancedMesh real
   const instMainRef =
     useRef<
       THREE.InstancedMesh<
@@ -187,7 +195,6 @@ export default function Flowers({ gardenActive = false }: Props) {
   const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const fadeBufferRef = useRef<Float32Array>(new Float32Array(MAX_FLOWERS));
 
-  // Uniforms
   const uTimeRef = useRef<{ value: number }>({ value: 0 });
   const uDissolveSizeRef = useRef<{ value: number }>({ value: 6.0 });
 
@@ -206,7 +213,6 @@ export default function Flowers({ gardenActive = false }: Props) {
   );
   const [version, setVersion] = useState(0);
 
-  // score acumulado
   const killsRef = useRef(0);
   const activityRef = useRef(0);
   const percentRef = useRef(0);
@@ -242,7 +248,7 @@ export default function Flowers({ gardenActive = false }: Props) {
     );
   };
 
-  // atributo instanciado iFade
+  // Atributo instanciado iFade
   useEffect(() => {
     const geo = instMainRef.current?.geometry as
       | THREE.InstancedBufferGeometry
@@ -260,22 +266,24 @@ export default function Flowers({ gardenActive = false }: Props) {
 
     uTimeRef.current.value += dt;
 
-    // decaimiento
+    // Decaimiento de actividad
     const decay = Math.exp(-dt / TAU_SECONDS);
     activityRef.current *= decay;
 
-    // spawn
+    // Spawn
     if (now - lastSpawnRef.current >= SPAWN_EVERY) {
       lastSpawnRef.current = now;
       const alive = itemsRef.current.filter(
         (it) => it.state === "alive" || it.state === "growing"
       ).length;
+
       if (alive < TARGET_ALIVE) {
         const positions = itemsRef.current
           .filter((it) => it.state !== "dead")
           .map((it) => it.pos);
         const pos = nonOverlappingPosition(positions, GARDEN_RADIUS);
         const slot = itemsRef.current.find((it) => it.state === "dead");
+
         if (slot) {
           slot.state = "growing";
           slot.t = 0;
@@ -285,10 +293,9 @@ export default function Flowers({ gardenActive = false }: Props) {
           slot.rotZ = rand(-0.12, 0.12);
           slot.yaw = yawToCenter(pos.x, pos.z);
 
-          // SFX spawn centralizado
           play("flower-pop", {
             volume: 0.005,
-            detuneSemitones: (Math.random() - 0.5) * 1.2, // leve variación
+            detuneSemitones: (Math.random() - 0.5) * 1.2,
           });
 
           window.dispatchEvent(
@@ -302,7 +309,7 @@ export default function Flowers({ gardenActive = false }: Props) {
       }
     }
 
-    // animaciones / estados
+    // Transiciones de estado
     let changed = false;
     for (const it of itemsRef.current) {
       if (it.state === "dead") continue;
@@ -320,7 +327,7 @@ export default function Flowers({ gardenActive = false }: Props) {
       }
     }
 
-    // fades por instancia
+    // Fades por instancia
     const fades = fadeBufferRef.current;
     for (const it of itemsRef.current) {
       let f = 0;
@@ -330,6 +337,7 @@ export default function Flowers({ gardenActive = false }: Props) {
       else f = 0;
       fades[it.id] = f;
     }
+
     const mesh = instMainRef.current;
     if (mesh?.geometry?.attributes?.iFade) {
       (
@@ -343,6 +351,7 @@ export default function Flowers({ gardenActive = false }: Props) {
 
   const killFlower = (it: Item) => {
     if (it.state !== "alive" && it.state !== "growing") return;
+
     it.state = "dying";
     it.t = 0;
     it.respawnAt = performance.now() / 1000 + rand(RESPAWN_MIN, RESPAWN_MAX);
@@ -375,7 +384,7 @@ export default function Flowers({ gardenActive = false }: Props) {
     killFlower(it);
   };
 
-  /** ===== Material con fade+dissolve ===== */
+  // Material con fade y dissolve
   const flowerMaterial = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -386,6 +395,7 @@ export default function Flowers({ gardenActive = false }: Props) {
       depthWrite: true,
       alphaTest: 0.001,
     });
+
     (
       m as THREE.MeshStandardMaterial & { alphaToCoverage?: boolean }
     ).alphaToCoverage = true;
@@ -420,9 +430,9 @@ export default function Flowers({ gardenActive = false }: Props) {
            varying vec3 vWorldPos;
 
            float hash21(vec2 p) {
-             p = fract(p*vec2(123.34, 345.45));
-             p += dot(p, p+34.345);
-             return fract(p.x*p.y);
+             p = fract(p * vec2(123.34, 345.45));
+             p += dot(p, p + 34.345);
+             return fract(p.x * p.y);
            }
 
            float bayer4(vec2 fragCoord){
@@ -433,7 +443,7 @@ export default function Flowers({ gardenActive = false }: Props) {
              m[4]=12; m[5]=4;  m[6]=14; m[7]=6;
              m[8]=3;  m[9]=11; m[10]=1; m[11]=9;
              m[12]=15; m[13]=7; m[14]=13; m[15]=5;
-             int idx = y*4 + x;
+             int idx = y * 4 + x;
              return float(m[idx]) / 16.0;
            }`
         )
@@ -447,7 +457,7 @@ export default function Flowers({ gardenActive = false }: Props) {
 
            float cell = hash21(floor(vWorldPos.xz * uDissolveSize));
            float dthr = mix(0.0, 1.0, 1.0 - vFade);
-           dthr = clamp(dthr + (bayer4(gl_FragCoord.xy)-0.5)/32.0, 0.0, 1.0);
+           dthr = clamp(dthr + (bayer4(gl_FragCoord.xy) - 0.5) / 32.0, 0.0, 1.0);
 
            if (cell < dthr) discard;
 
@@ -458,6 +468,7 @@ export default function Flowers({ gardenActive = false }: Props) {
 
     m.needsUpdate = true;
     matRef.current = m;
+
     return m;
   }, []);
 
@@ -516,13 +527,15 @@ export default function Flowers({ gardenActive = false }: Props) {
           frustumCulled={false}
         >
           <cylinderGeometry args={[0.05, 0.05, 1, 10]} />
-          <meshStandardMaterial roughness={0.7} metalness={0.0} />
+          <meshStandardMaterial roughness={0.7} metalness={0} />
           {renderItems.map((it) => {
             let s = it.scale * 0.9;
-            if (it.state === "growing")
+            if (it.state === "growing") {
               s *= 0.2 + 0.8 * Math.min(1, it.t / 0.9);
-            if (it.state === "dying")
+            }
+            if (it.state === "dying") {
               s *= 1.1 - 1.05 * Math.min(1, it.t / 0.35);
+            }
             return (
               <Instance
                 key={`ff-${it.id}`}

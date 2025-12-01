@@ -4,11 +4,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * Progreso 0..1 de una sección cualquiera:
- *  - 0 cuando la sección todavía no entró (top === vh)
- *  - 1 cuando ya salió por arriba (bottom === 0)
- *
- * Clamp fuera de rango. Ideal para sincronizar cámara/fog con scroll.
+ * Devuelve un progreso 0..1 según el scroll sobre una sección.
+ * 0: el top de la sección está a la altura del bottom del viewport.
+ * 1: el bottom de la sección ya pasó por el top del viewport.
  */
 export default function useSectionProgress() {
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -17,7 +15,7 @@ export default function useSectionProgress() {
   const lastProgressRef = useRef<number>(-1);
   const [progress, setProgress] = useState(0);
 
-  // Cache de alto para evitar medir todo el rect cada frame
+  // Altura cacheada para evitar medir todo el rect en cada frame
   const sectionHeightRef = useRef<number>(0);
 
   const reducedMotion = usePrefersReducedMotion();
@@ -26,7 +24,6 @@ export default function useSectionProgress() {
   const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
   const getViewportHeight = () => {
-    // visualViewport maneja mejor las barras del navegador en mobile
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     return Math.max(
       1,
@@ -48,12 +45,11 @@ export default function useSectionProgress() {
     const rect = el.getBoundingClientRect();
     const height = sectionHeightRef.current || rect.height || 1;
 
-    // Mismo rango que en useScrollParallax:
-    // top: vh  -> bottom: 0  (reexpresado vía rect.top)
-    // cuando rect.bottom === 0 => rect.top === -height
+    // Mismo rango que useScrollParallax:
+    // top: vh  → bottom: 0  (reexpresado vía rect.top)
     const start = vh;
     const end = -height;
-    const denom = end - start || -1; // evita /0
+    const denom = end - start || -1;
     const t = (rect.top - start) / denom;
     const k = clamp01(t);
 
@@ -64,10 +60,11 @@ export default function useSectionProgress() {
   }, []);
 
   const lastTickRef = useRef<number>(0);
+
   const loop = useCallback(
     (now: number) => {
-      // Si el usuario prefiere menos movimiento, muestreamos menos (≈10 FPS)
-      const minDelta = reducedMotion ? 100 : 0; // ms
+      // Con prefers-reduced-motion activo se reduce la frecuencia de muestreo
+      const minDelta = reducedMotion ? 100 : 0;
       if (!lastTickRef.current || now - lastTickRef.current >= minDelta) {
         compute();
         lastTickRef.current = now;
@@ -80,7 +77,7 @@ export default function useSectionProgress() {
   const start = useCallback(() => {
     if (runningRef.current) return;
     runningRef.current = true;
-    compute(); // primer cómputo inmediato
+    compute();
     rafRef.current = requestAnimationFrame(loop);
   }, [compute, loop]);
 
@@ -94,7 +91,7 @@ export default function useSectionProgress() {
     const el = sectionRef.current;
     if (!el) return;
 
-    // Activar/desactivar rAF según visibilidad de la sección
+    // Activa/desactiva el rAF según la visibilidad de la sección
     const io = new IntersectionObserver(
       (entries) => {
         const visible = entries.some((e) => e.isIntersecting);
@@ -105,7 +102,7 @@ export default function useSectionProgress() {
     );
     io.observe(el);
 
-    // Observamos cambios de tamaño para refrescar height cacheada
+    // Observa cambios de tamaño para refrescar la altura guardada
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
       ro = new ResizeObserver((entries) => {
@@ -121,28 +118,24 @@ export default function useSectionProgress() {
       });
       ro.observe(el);
     } else {
-      // Fallback: medimos una vez
       sectionHeightRef.current = el.getBoundingClientRect().height || 1;
     }
 
-    // Recalcular en cambios de viewport (resize/orientation/zoom)
+    // Recalcula en cambios de viewport (resize/orientación/zoom)
     const onResize = () => compute();
     const onVVResize = () => compute();
     window.addEventListener("resize", onResize, { passive: true });
-    window.visualViewport?.addEventListener?.(
-      "resize",
-      onVVResize,
-      { passive: true } as AddEventListenerOptions
-    );
+    window.visualViewport?.addEventListener?.("resize", onVVResize, {
+      passive: true,
+    } as AddEventListenerOptions);
 
-    // Pausar cuando la pestaña está oculta (ahorro de CPU)
+    // Pausa cuando la pestaña está oculta
     const onVisibility = () => {
       if (document.hidden) stop();
       else start();
     };
     document.addEventListener("visibilitychange", onVisibility);
 
-    // Cómputo inicial
     compute();
 
     return () => {
@@ -160,7 +153,6 @@ export default function useSectionProgress() {
       ref: (el: HTMLElement | null) => {
         sectionRef.current = el;
         if (el) {
-          // Actualizamos altura cacheada y recalculamos de entrada
           const rect = el.getBoundingClientRect();
           sectionHeightRef.current =
             rect.height || sectionHeightRef.current || 1;
@@ -174,9 +166,10 @@ export default function useSectionProgress() {
   return { progress, bind };
 }
 
-/* ============== utilidades ============== */
+// Hook para prefers-reduced-motion
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -185,5 +178,6 @@ function usePrefersReducedMotion() {
     mq.addEventListener?.("change", update);
     return () => mq.removeEventListener?.("change", update);
   }, []);
+
   return reduced;
 }

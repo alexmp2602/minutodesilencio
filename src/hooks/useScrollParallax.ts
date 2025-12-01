@@ -4,12 +4,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * Progreso 0..1 mientras scrolleás por la sección “cielo”.
- * Definición exacta del rango:
- *   - 0 cuando el top del sky está en la parte inferior del viewport (rect.top === vh)
- *   - 1 cuando el bottom del sky pasa por el top del viewport (rect.bottom === 0)
- *
- * Queda clamp(0..1) fuera de ese rango.
+ * Calcula un progreso 0..1 en función del scroll sobre una sección.
+ * 0: cuando el top del sky está a la altura del bottom del viewport.
+ * 1: cuando el bottom del sky pasa por el top del viewport.
  */
 export default function useScrollParallax() {
   const skyRef = useRef<HTMLElement | null>(null);
@@ -18,10 +15,9 @@ export default function useScrollParallax() {
   const lastProgressRef = useRef<number>(-1);
   const [progress, setProgress] = useState(0);
 
-  // Cache de medidas para evitar getBoundingClientRect() completo cada frame
+  // Cache de altura del bloque para evitar medir todo el tiempo
   const skyHeightRef = useRef<number>(0);
 
-  // Media query para reducir trabajo si el usuario lo pidió
   const reducedMotion = usePrefersReducedMotion();
 
   const epsilon = 1e-3;
@@ -63,6 +59,7 @@ export default function useScrollParallax() {
   }, []);
 
   const lastTickRef = useRef<number>(0);
+
   const loop = useCallback(
     (now: number) => {
       const minDelta = reducedMotion ? 100 : 0;
@@ -126,6 +123,7 @@ export default function useScrollParallax() {
 
     const onResize = () => compute();
     const onVVResize = () => compute();
+
     window.addEventListener("resize", onResize, { passive: true });
     window.visualViewport?.addEventListener?.("resize", onVVResize, {
       passive: true,
@@ -166,11 +164,10 @@ export default function useScrollParallax() {
   return { progress, skyProps };
 }
 
-/* ===========================
-   Utilidades
-   =========================== */
+// Prefers-reduced-motion como hook aparte
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -179,5 +176,6 @@ function usePrefersReducedMotion() {
     mq.addEventListener?.("change", update);
     return () => mq.removeEventListener?.("change", update);
   }, []);
+
   return reduced;
 }

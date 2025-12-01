@@ -1,4 +1,5 @@
 "use client";
+
 import { useCallback, useRef } from "react";
 import { useMute } from "@/hooks/useMute";
 
@@ -38,13 +39,13 @@ export default function useSfx() {
     if (didDefault.current) return;
     didDefault.current = true;
 
-    // efecto al plantar (alias "plant")
+    // sonido base al plantar
     register("plant", [{ src: "/audio/plant.mp3", type: "audio/mpeg" }], {
       polyphony: 4,
       cooldownMs: 60,
     });
 
-    // alternativa cartoon (por si querés usarlo en otras interacciones)
+    // variante más “cartoon” para otros usos
     register(
       "flower-pop",
       [
@@ -56,7 +57,7 @@ export default function useSfx() {
       { polyphony: 4, cooldownMs: 70 }
     );
 
-    // coro para la intro
+    // coro de fondo
     register(
       "choir",
       [{ src: "/audio/angelic-choir-intro-257473.mp3", type: "audio/mpeg" }],
@@ -96,6 +97,7 @@ export default function useSfx() {
     const pick = pickSupported(sources);
     const polyphony = Math.max(1, Math.min(8, opts?.polyphony ?? 2));
     const pool = Array.from({ length: polyphony }, () => makeAudio(pick.src));
+
     const bank: Bank = {
       id,
       sources,
@@ -105,6 +107,7 @@ export default function useSfx() {
       lastAt: -1e9,
       cooldownMs: opts?.cooldownMs ?? 60,
     };
+
     banks.current.set(id, bank);
     return bank;
   }
@@ -127,12 +130,16 @@ export default function useSfx() {
           a.pause();
           a.currentTime = 0;
         } catch {}
+
         const rateBase = opts.rate ?? 1;
         const det = opts.detuneSemitones ?? 0;
+
         a.playbackRate = rateBase * Math.pow(2, det / 12);
         a.volume = Math.max(0, Math.min(1, opts.volume ?? 1));
+
         await a.play();
       } catch {
+        // desbloqueo de audio en navegadores que requieren interacción
         const unlock = () => {
           a.play().finally(() => {
             window.removeEventListener("pointerdown", unlock);

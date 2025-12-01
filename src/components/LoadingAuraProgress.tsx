@@ -7,26 +7,28 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - clamp01(t), 3);
 
 export default function LoadingAuraProgress({ active }: { active: boolean }) {
-  const [k, setK] = useState(0); // 0..1 desde la barra
+  const [k, setK] = useState(0);
 
-  // Escuchar el progreso SOLO cuando está activo
+  // Escucha el progreso global del silencio mientras el loader está activo
   useEffect(() => {
     if (!active) {
       setK(0);
       return;
     }
 
-    const onP = (e: Event) => {
+    const onProgress = (e: Event) => {
       const detail = (e as CustomEvent).detail as { k?: number } | undefined;
       if (typeof detail?.k === "number") {
         setK(clamp01(detail.k));
-        // console.log("[Aura] k =", detail.k); // debug si querés
       }
     };
 
-    window.addEventListener("silence:progress", onP as EventListener);
+    window.addEventListener("silence:progress", onProgress as EventListener);
     return () => {
-      window.removeEventListener("silence:progress", onP as EventListener);
+      window.removeEventListener(
+        "silence:progress",
+        onProgress as EventListener
+      );
     };
   }, [active]);
 
@@ -45,11 +47,11 @@ export default function LoadingAuraProgress({ active }: { active: boolean }) {
         position: "fixed",
         inset: 0,
         pointerEvents: "none",
-        zIndex: 1, // encima del fondo azul, debajo del contenido
+        zIndex: 1,
         overflow: "hidden",
       }}
     >
-      {/* capa de auras */}
+      {/* capa de auras generales */}
       <div
         className="aura-layer"
         style={{
@@ -58,7 +60,7 @@ export default function LoadingAuraProgress({ active }: { active: boolean }) {
         }}
       />
 
-      {/* halo específico de la barra (centro pantalla aprox) */}
+      {/* halo centrado sobre el área de la barra */}
       <div
         className="bar-halo"
         style={{
@@ -101,7 +103,7 @@ export default function LoadingAuraProgress({ active }: { active: boolean }) {
         .bar-halo {
           position: absolute;
           left: 50%;
-          top: 46%; /* altura aproximada de la barra */
+          top: 46%;
           width: 70vw;
           max-width: 900px;
           height: 140px;

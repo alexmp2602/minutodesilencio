@@ -6,11 +6,10 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, ThreeEvent } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 
-/* ------- encuadre ------- */
+/* Ajuste de encuadre */
 const FIT_HEIGHT = 1.5;
 const OFFSET_Y = -0.9;
 
-/* ---------------- tipos ---------------- */
 type Dyn = {
   falling: boolean;
   vel: THREE.Vector3;
@@ -26,19 +25,19 @@ type Props = {
   position?: [number, number, number];
   onHint?: (show: boolean) => void;
 
-  /** color principal de los pétalos */
+  // Color principal de los pétalos
   petalColor?: string;
-  /** color del centro */
+  // Color del centro
   centerColor?: string;
-  /** color del tallo */
+  // Color del tallo
   stemColor?: string;
-  /** si true el centro nunca se desprende */
+  // Si es true el centro nunca se desprende
   centerSticky?: boolean;
-  /** hace que la flor “flote” y gire levemente */
+  // Hace que la flor flote y gire levemente
   floatSpin?: boolean;
 };
 
-const GRAVITY = -2.4; // suave, caída flotante
+const GRAVITY = -2.4;
 const FLOOR_Y = 0;
 
 const isMesh = (o: THREE.Object3D): o is THREE.Mesh => o instanceof THREE.Mesh;
@@ -56,7 +55,9 @@ const isStem = (name: string) => /^tallo$/i.test(name);
 const isCenter = (name: string) => /^partedelmedio$/i.test(name);
 const isPetal = (name: string) => /^petalo[1-6]$/i.test(name);
 
-/** centra X/Z, apoya base en Y=0, escala y aplica offset */
+/**
+ * Centra X/Z, apoya la base en Y=0, escala y aplica offset
+ */
 function fitAndCenter(
   root: THREE.Group,
   targetHeight = FIT_HEIGHT,
@@ -92,7 +93,7 @@ const EXPECTED = [
   "Tallo",
 ] as const;
 
-/* --------------- núcleo flor --------------- */
+/* Núcleo de la flor */
 function FlowerMesh({
   url,
   scale,
@@ -167,7 +168,7 @@ function FlowerMesh({
   useEffect(() => {
     const set = new Set<string>();
 
-    // abrimos un poquito los pétalos solo una vez (pero menos)
+    // Apertura leve de pétalos una sola vez
     if (!petalsOpenedRef.current) {
       model.traverse((o) => {
         if (!isMesh(o)) return;
@@ -175,7 +176,7 @@ function FlowerMesh({
         if (isPetal(name)) {
           const v = new THREE.Vector3(o.position.x, 0, o.position.z);
           if (v.lengthSq() > 0.0001) {
-            v.normalize().multiplyScalar(0.035); // antes 0.06 → menos spread
+            v.normalize().multiplyScalar(0.035);
             o.position.add(v);
           }
         }
@@ -203,7 +204,7 @@ function FlowerMesh({
     tRef.current += dt;
     const t = tRef.current;
 
-    // flotar + girar flor completa
+    // Flotar y girar la flor completa
     if (floatSpin) {
       if (baseYRef.current == null) baseYRef.current = g.position.y;
       const baseY = baseYRef.current!;
@@ -211,12 +212,12 @@ function FlowerMesh({
       g.rotation.y += 0.12 * dt;
     }
 
-    // efecto hover (leve escala)
+    // Efecto hover (escala suave)
     g.scale.setScalar(
       THREE.MathUtils.lerp(g.scale.x, hovered ? 1.06 : 1, 0.18)
     );
 
-    // animación de pétalos que caen
+    // Animación de pétalos que caen
     model.traverse((p) => {
       if (!isMesh(p)) return;
       const d = dyn[p.uuid];
@@ -226,7 +227,6 @@ function FlowerMesh({
       d.vel.multiplyScalar(0.985);
       p.position.addScaledVector(d.vel, dt);
 
-      // sway lateral más suave y contenido
       const swayX = Math.sin(t * d.swayFreq + d.phase) * d.swayAmp * dt * 10.0;
       const swayZ = Math.cos(t * d.swayFreq + d.phase) * d.swayAmp * dt * 10.0;
       p.position.x += swayX;
@@ -251,6 +251,7 @@ function FlowerMesh({
     setHovered(true);
     onHint?.(true);
   };
+
   const onOut = () => {
     setHovered(false);
     onHint?.(false);
@@ -260,8 +261,7 @@ function FlowerMesh({
     const obj = e.object;
     if (!petals.current.has(obj.uuid)) return;
 
-    // sway más suave y cercano
-    const swayAmp = 0.06 + Math.random() * 0.04; // antes ~0.14+
+    const swayAmp = 0.06 + Math.random() * 0.04;
     const swayFreq = 1.1 + Math.random() * 0.9;
     const phase = Math.random() * Math.PI * 2;
 
@@ -270,8 +270,8 @@ function FlowerMesh({
       [obj.uuid]: {
         falling: true,
         vel: new THREE.Vector3(
-          (Math.random() - 0.5) * 0.32, // antes 0.55 / 1.0 → menos horizontal
-          1.15 + Math.random() * 0.5, // caída más suave
+          (Math.random() - 0.5) * 0.32,
+          1.15 + Math.random() * 0.5,
           (Math.random() - 0.5) * 0.32
         ),
         av: new THREE.Vector3(
@@ -298,13 +298,12 @@ function FlowerMesh({
   );
 }
 
-/* --------------- canvas contenedor --------------- */
+/* Canvas contenedor */
 export default function InteractiveFlower({
   url = "/models/InteractiveFlower.glb",
   scale = 1,
   position = [0, 0, 0],
   onHint,
-  // 🎨 Paleta nueva por defecto
   petalColor = "#D095E7",
   stemColor = "#006D05",
   centerColor = "#FFF79B",

@@ -12,19 +12,26 @@ export default function HomePage() {
   const { progress: minuteProgress, bind: minuteBind } = useSectionProgress();
 
   const [gardenK, setGardenK] = React.useState(0);
+
   React.useEffect(() => {
-    const onGarden = (e: Event) => {
-      const ev = e as CustomEvent<{ k?: number; entered?: boolean }>;
-      if (ev.detail?.entered) return setGardenK(1);      // fuerza 1 cuando entrás
-      if (typeof ev.detail?.k === "number") setGardenK(ev.detail.k);
+    const onGarden = (event: Event) => {
+      const ev = event as CustomEvent<{ k?: number; entered?: boolean }>;
+      if (ev.detail?.entered) {
+        setGardenK(1);
+        return;
+      }
+      if (typeof ev.detail?.k === "number") {
+        setGardenK(ev.detail.k);
+      }
     };
+
     window.addEventListener("ms:garden", onGarden as EventListener);
     return () =>
       window.removeEventListener("ms:garden", onGarden as EventListener);
   }, []);
 
   const overlayAlpha = 1 - gardenK;
-  const showOverlay = overlayAlpha > 0.01;  // umbral para desmontaje
+  const showOverlay = overlayAlpha > 0.01;
 
   return (
     <main className="parallax-root" aria-label="Recorrido continuo">
@@ -46,7 +53,8 @@ export default function HomePage() {
         }}
         aria-hidden
       />
-      {/* Overlay de textos — fade + desmontaje */}
+
+      {/* Overlay de textos */}
       <div
         style={{
           opacity: overlayAlpha,
@@ -58,7 +66,7 @@ export default function HomePage() {
         {showOverlay && <TextOverlay progress={introProgress} />}
       </div>
 
-      {/* Minuto: si lo vas a quitar, comentá todo este bloque */}
+      {/* Sección del minuto (actualmente desactivada) */}
       <section
         {...minuteBind}
         style={{

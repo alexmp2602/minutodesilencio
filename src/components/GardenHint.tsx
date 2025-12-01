@@ -10,7 +10,7 @@ const MESSAGES = [
 ];
 
 export default function GardenHint({
-  autoRotateMs = 0, // poné 4000 si querés que cambie cada 4s
+  autoRotateMs = 0,
 }: {
   autoRotateMs?: number;
 }) {
@@ -19,12 +19,10 @@ export default function GardenHint({
     Math.floor(Math.random() * MESSAGES.length)
   );
 
-  // Mostrar popup al entrar (queda hasta comenzar)
   React.useEffect(() => {
     setOpen(true);
   }, []);
 
-  // Rotación opcional entre frases
   React.useEffect(() => {
     if (!autoRotateMs || !open) return;
     const id = setInterval(() => {
@@ -35,7 +33,6 @@ export default function GardenHint({
 
   const onStart = React.useCallback(() => {
     setOpen(false);
-    // Evento global para que el resto "arranque"
     window.dispatchEvent(new CustomEvent("ms:garden:started"));
   }, []);
 

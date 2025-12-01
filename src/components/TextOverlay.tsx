@@ -9,10 +9,11 @@ import useSfx from "@/hooks/useSfx";
 import InteractiveFlower from "@/components/InteractiveFlower";
 import LoadingAuraProgress from "@/components/LoadingAuraProgress";
 
-/* Utils */
+// Utils chicos que uso en varios lugares
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - clamp01(t), 3);
 
+// Solo renderizar cosas que dependen de window después del mount
 function useMounted(): boolean {
   const [m, setM] = useState(false);
   useEffect(() => {
@@ -21,6 +22,7 @@ function useMounted(): boolean {
   return m;
 }
 
+// Media query simple para layout mobile/desktop
 function useIsNarrow(bp = 900): boolean {
   const [n, set] = useState(false);
   useEffect(() => {
@@ -33,7 +35,7 @@ function useIsNarrow(bp = 900): boolean {
   return n;
 }
 
-/** Mapea el progreso de scroll a fases lógicas */
+// Ajusto el progreso a “fases lógicas” para que no sea lineal uno a uno
 function warpProgress(
   p: number,
   weights: [number, number, number, number] = [0.06, 0.5, 0.8, 0.5],
@@ -78,7 +80,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
   const [fadeOut, setFadeOut] = useState(false);
   const fadeRef = useRef<number | null>(null);
 
-  // GAME OVER del ritual
+  // Estado para el “game over” del ritual
   const [ritualFailed, setRitualFailed] = useState(false);
 
   const phase = useMemo<"intro" | "text" | "loading" | "done">(() => {
@@ -93,7 +95,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
   const backdropOpacity = phase === "done" ? 1 - easeOutCubic(doneK) : 1;
   const ambientVolume = 0.18 * (phase === "done" ? 1 - easeOutCubic(doneK) : 1);
 
-  /* SFX al entrar en loading */
+  // Disparo SFX solo cuando entro a “loading”
   const prevPhase = useRef<"intro" | "text" | "loading" | "done" | null>(null);
   useEffect(() => {
     if (!muted && phase === "loading" && prevPhase.current !== "loading") {
@@ -102,7 +104,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
     prevPhase.current = phase;
   }, [phase, muted, play]);
 
-  /* Completar silencio */
+  // Cuando se completa el silencio, cierro el overlay con un pequeño fade
   useEffect(() => {
     const onDone = () => {
       if (completed) return;
@@ -125,7 +127,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
     };
   }, [completed]);
 
-  /* 🔒 BLOQUEAR SCROLL SOLO DURANTE LA FASE "LOADING" */
+  // Bloqueo el scroll solamente durante la fase de carga
   useEffect(() => {
     if (phase !== "loading") return;
 
@@ -142,7 +144,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
     };
   }, [phase]);
 
-  // ---------- GAME OVER UI ----------
+  // Pantalla azul de “game over”
   if (ritualFailed) {
     const handleRestart = () => {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -203,7 +205,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
               letterSpacing: "0.12em",
               textTransform: "uppercase",
               cursor: "pointer",
-              boxShadow: "0 6px 18px rgba(0,0,0,0.35)",
+              boxShadow: "0 6px 18px rgba(0, 0, 0, 0.35)",
             }}
           >
             VOLVER A EMPEZAR
@@ -212,7 +214,6 @@ export default function TextOverlay({ progress }: { progress: number }) {
       </div>
     );
   }
-  // ---------- FIN GAME OVER ----------
 
   return (
     <div
@@ -264,7 +265,7 @@ export default function TextOverlay({ progress }: { progress: number }) {
   );
 }
 
-/* ---------- HERO ---------- */
+// Hero principal con hashtag + flor interactiva
 function HeroWithFlower() {
   const isNarrow = useIsNarrow();
   const [showHint, setShowHint] = useState(false);
@@ -412,7 +413,7 @@ function HeroWithFlower() {
             inset: -2%;
             border-radius: 50%;
             border: 2px dashed rgba(255, 255, 255, 0.65);
-            animation: rotate 6s linear infinite;
+            animation: rotate 6s linear infinite.;
           }
           .bob {
             animation: bob 2.6s ease-in-out infinite;
@@ -448,27 +449,25 @@ function HeroWithFlower() {
   );
 }
 
-/* ---------- PressHoldLoader (con fail + delay) ---------- */
+// Loader de “mantener presionado” con lógica de fallo/éxito
 function PressHoldLoader({ onFail }: { onFail?: () => void }) {
   const [k, setK] = useState(0);
   const [holding, setHolding] = useState(false);
 
   const holdingRef = useRef(false);
   const raf = useRef<number | null>(null);
-  const firedRef = useRef(false); // éxito
-  const failedRef = useRef(false); // game over
-  const hadProgressRef = useRef(false); // subió alguna vez
-  const failTimeoutRef = useRef<number | null>(null); // delay para mostrar 0
+  const firedRef = useRef(false);
+  const failedRef = useRef(false);
+  const hadProgressRef = useRef(false);
+  const failTimeoutRef = useRef<number | null>(null);
 
   const SPEED_UP = 0.0048;
   const SPEED_DOWN = 0.0025;
 
-  /* Sync ref */
   useEffect(() => {
     holdingRef.current = holding;
   }, [holding]);
 
-  /* RAF loop estable */
   useEffect(() => {
     const loop = () => {
       setK((v) =>
@@ -486,7 +485,7 @@ function PressHoldLoader({ onFail }: { onFail?: () => void }) {
     };
   }, []);
 
-  /* completar (éxito) */
+  // Éxito: cuando la barra llega a 1 disparo el evento global
   useEffect(() => {
     if (k >= 1 && !firedRef.current) {
       firedRef.current = true;
@@ -498,7 +497,7 @@ function PressHoldLoader({ onFail }: { onFail?: () => void }) {
     }
   }, [k]);
 
-  /* fallo: barra vuelve a 0 después de haber subido, con 1s de delay */
+  // Si la barra volvió a 0 después de tener progreso -> game over
   useEffect(() => {
     if (k > 0 && k < 1) {
       hadProgressRef.current = true;
@@ -519,10 +518,9 @@ function PressHoldLoader({ onFail }: { onFail?: () => void }) {
         failTimeoutRef.current = window.setTimeout(() => {
           failedRef.current = true;
           onFail?.();
-        }, 1000); // 1 segundo para que se vea la barra vacía
+        }, 1000);
       }
     } else {
-      // si vuelve a tener progreso o vuelve a presionar, cancelamos el pending-fail
       if (failTimeoutRef.current && (holding || k > 0)) {
         window.clearTimeout(failTimeoutRef.current);
         failTimeoutRef.current = null;
@@ -530,7 +528,7 @@ function PressHoldLoader({ onFail }: { onFail?: () => void }) {
     }
   }, [k, holding, onFail]);
 
-  /* enviar progreso */
+  // Reporto progreso al resto de la UI
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("silence:progress", { detail: { k } })
@@ -604,8 +602,6 @@ function PressHoldLoader({ onFail }: { onFail?: () => void }) {
   );
 }
 
-/* ---------- Vela draggable reutilizable ---------- */
-
 type DragState = {
   dragging: boolean;
   startX: number;
@@ -618,6 +614,7 @@ type DragState = {
   vh: number;
 };
 
+// Vela draggable que uso en el hero y en el loader
 function DraggableCandle({
   size = 180,
   showHintInitially = false,
@@ -784,7 +781,6 @@ function DraggableCandle({
   );
 }
 
-/* ---------- Completado ---------- */
 function DoneBlock() {
   return (
     <div style={{ color: "#fff", textAlign: "center", pointerEvents: "none" }}>
@@ -795,7 +791,7 @@ function DoneBlock() {
   );
 }
 
-/* ---------- Zócalos ---------- */
+// Bordes tipo marquesina alrededor de la pantalla
 function MarqueeBorder({ strong = false }: { strong?: boolean }) {
   const phrase = "#queenpazdescansen🕊️🙏 ";
   const items = Array.from({ length: 24 }, (_, i) => (
@@ -895,7 +891,7 @@ function MarqueeBorder({ strong = false }: { strong?: boolean }) {
   );
 }
 
-/* ---------- Hint scroll ---------- */
+// Pista para que el usuario siga scrolleando
 function ScrollHint({ visible }: { visible: boolean }) {
   return (
     <div

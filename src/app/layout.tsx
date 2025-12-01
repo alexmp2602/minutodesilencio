@@ -26,12 +26,12 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#1227e6", // azul primario
+  themeColor: "#1227e6",
 };
 
 const siteUrl = "https://minutodesilencio.vercel.app";
 const siteName = "Minuto de Silencio";
-const ogImage = "/minutodesilencio.png"; // asegurate que exista en /public
+const ogImage = "/minutodesilencio.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -93,7 +93,6 @@ export default function RootLayout({
       <head>
         <link rel="prefetch" href="/audio/plant.mp3" crossOrigin="anonymous" />
         <meta name="color-scheme" content="dark light" />
-        {/* <link rel="preload" href="/fonts/edwardianscriptitc.ttf" as="font" type="font/woff2" crossOrigin="anonymous" /> */}
       </head>
       <body
         className={[

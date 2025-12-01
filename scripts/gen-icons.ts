@@ -18,7 +18,7 @@ type Job = {
 };
 
 const jobs: Job[] = [
-  // Open Graph (16:9) – partiendo de cuadrado, hacemos cover
+  // Open Graph
   {
     out: "og.jpg",
     size: { w: 1200, h: 630 },
@@ -27,7 +27,7 @@ const jobs: Job[] = [
     bg: "#0b0d10",
   },
 
-  // Apple + PWA
+  // Icons para app / PWA
   { out: "apple-touch-icon.png", size: 180 },
   { out: "android-chrome-192x192.png", size: 192 },
   { out: "android-chrome-512x512.png", size: 512 },
@@ -37,22 +37,22 @@ const jobs: Job[] = [
   { out: "favicon-16x16.png", size: 16 },
 ];
 
-// Utilidades
 function outPath(name: string) {
   return path.join(OUT, name);
 }
+
 async function ensureSrc() {
   try {
     await fs.access(SRC);
   } catch {
-    throw new Error(`No se encontró imagen fuente en ${SRC}`);
+    throw new Error(`No se encontró la imagen fuente en ${SRC}`);
   }
 }
 
 async function run() {
   await ensureSrc();
 
-  // Generar PNG/JPG
+  // PNG / JPG
   for (const job of jobs) {
     const target = outPath(job.out);
     const fit = job.fit ?? "contain";
@@ -71,10 +71,11 @@ async function run() {
     } else {
       await instance.png({ compressionLevel: 9 }).toFile(target);
     }
+
     console.log("✓", job.out);
   }
 
-  // Generar favicon.ico (16,32,48) a partir de PNGs
+  // favicon.ico (16, 32, 48)
   const tmp16 = await sharp(SRC).resize(16, 16).png().toBuffer();
   const tmp32 = await sharp(SRC).resize(32, 32).png().toBuffer();
   const tmp48 = await sharp(SRC).resize(48, 48).png().toBuffer();
@@ -82,18 +83,19 @@ async function run() {
   await fs.writeFile(outPath("favicon.ico"), ico);
   console.log("✓ favicon.ico");
 
-  // Opcional: maskable icon (PWA)
+  // Icono maskable (PWA)
   const maskable = await sharp(SRC)
     .resize(512, 512, { fit: "contain", background: "#0b0d10" })
     .png()
     .toBuffer();
+
   await fs.writeFile(outPath("android-chrome-512x512-maskable.png"), maskable);
   console.log("✓ android-chrome-512x512-maskable.png");
 
-  console.log("\nListo. Todos los assets fueron regenerados en /public");
+  console.log("\nListo. Assets regenerados en /public");
 }
 
-run().catch((e) => {
-  console.error(e);
+run().catch((err) => {
+  console.error(err);
   process.exit(1);
 });

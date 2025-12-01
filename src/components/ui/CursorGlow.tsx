@@ -5,14 +5,34 @@ export default function CursorGlow() {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const el = ref.current!;
-    const move = (e: MouseEvent) => {
-      el.style.transform = `translate(${e.clientX - 10}px, ${
-        e.clientY - 10
-      }px)`;
+    const el = ref.current;
+    if (!el) return;
+
+    let x = window.innerWidth / 2;
+    let y = window.innerHeight / 2;
+    let tx = x;
+    let ty = y;
+
+    const speed = 0.16; // suavidad del movimiento
+
+    const onMove = (e: MouseEvent) => {
+      tx = e.clientX - 10;
+      ty = e.clientY - 10;
     };
-    window.addEventListener("mousemove", move, { passive: true });
-    return () => window.removeEventListener("mousemove", move);
+
+    const loop = () => {
+      x += (tx - x) * speed;
+      y += (ty - y) * speed;
+      el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      requestAnimationFrame(loop);
+    };
+
+    window.addEventListener("mousemove", onMove, { passive: true });
+    requestAnimationFrame(loop);
+
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+    };
   }, []);
 
   return (
@@ -33,12 +53,14 @@ export default function CursorGlow() {
             "0 0 12px 4px rgba(255,255,255,.35), 0 0 28px 10px rgba(18,39,230,.28)",
           filter: "blur(0.2px)",
           zIndex: 9999,
+          transform: "translate3d(0,0,0)",
         }}
       />
+
       <style jsx global>{`
         * {
           cursor: none;
-        } /* escondo cursor nativo */
+        }
         a,
         button,
         input,

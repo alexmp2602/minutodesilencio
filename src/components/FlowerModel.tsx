@@ -1,5 +1,6 @@
 // src/components/FlowerModel.tsx
 "use client";
+
 import React, { useMemo } from "react";
 import type { JSX } from "react";
 import * as THREE from "three";
@@ -20,6 +21,7 @@ function isPetalName(name?: string) {
   const n = name.toLowerCase();
   return /(petal|petalo|petalón|flower_top|blossom|flor|corola)/.test(n);
 }
+
 function isStemName(name?: string) {
   if (!name) return false;
   const n = name.toLowerCase();
@@ -37,7 +39,7 @@ export default function FlowerModel({
     const cloned = gltf.scene.clone(true);
     cloned.updateMatrixWorld(true);
 
-    // Heurística de materiales
+    // Ajuste de materiales y colores
     cloned.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -45,36 +47,37 @@ export default function FlowerModel({
       mesh.castShadow = true;
       mesh.receiveShadow = true;
 
-      // Normalizar material
       const mat = (mesh.material ??
         new THREE.MeshStandardMaterial()) as THREE.MeshStandardMaterial;
+
       mesh.material = mat;
       mat.roughness ??= 0.6;
       mat.metalness ??= 0.02;
 
       const byMesh = isPetalName(mesh.name);
       const byMat = isPetalName(mat.name);
-      const petal = byMesh || byMat;
+      const isPetal = byMesh || byMat;
 
       const byMeshStem = isStemName(mesh.name);
       const byMatStem = isStemName(mat.name);
-      const stem = byMeshStem || byMatStem;
+      const isStem = byMeshStem || byMatStem;
 
-      // Fallback geométrico (por si el GLB no tiene nombres)
-      if (!petal && !stem && mesh.geometry?.boundingBox == null) {
+      // Fallback geométrico cuando no hay nombres útiles en el GLB
+      if (!isPetal && !isStem && mesh.geometry?.boundingBox == null) {
         mesh.geometry?.computeBoundingBox();
       }
+
       const bb = mesh.geometry?.boundingBox ?? null;
       const aspect = bb
         ? (bb.max.y - bb.min.y) / Math.max(0.0001, bb.max.x - bb.min.x)
         : 1;
 
-      if (petal || (!stem && aspect < 1.2)) {
+      if (isPetal || (!isStem && aspect < 1.2)) {
         mat.color = PETAL.clone();
-      } else if (stem || aspect >= 1.2) {
+      } else if (isStem || aspect >= 1.2) {
         mat.color = STEM.clone();
       } else {
-        mat.color = PETAL.clone(); // último recurso
+        mat.color = PETAL.clone();
       }
     });
 

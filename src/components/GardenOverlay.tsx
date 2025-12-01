@@ -9,7 +9,6 @@ import type { Message } from "@/lib/types";
 import { useMuteStore } from "@/state/muteStore";
 import useSfx from "@/hooks/useSfx";
 
-/* ----------------------------- Tipos ----------------------------- */
 type Msg = {
   id: string;
   text: string;
@@ -18,13 +17,15 @@ type Msg = {
   user_name: string | null;
 };
 
-/* ----------------------------- Utilidades ----------------------------- */
 const clamp = (n: number, a = 0, b = 100) => Math.max(a, Math.min(b, n));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const nowTs = () => Date.now();
+
 const STORAGE_KEY = "mds:messages";
 const MAX_LOCAL = 120;
 const LIMIT_FETCH = 120;
+const LIFETIME_MS = 90_000;
+const EASE = 0.12;
 
 function readStorage(): Msg[] {
   try {
@@ -43,13 +44,13 @@ function readStorage(): Msg[] {
     return [];
   }
 }
+
 function writeStorage(arr: Msg[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(arr.slice(0, MAX_LOCAL)));
   } catch {}
 }
 
-/* ------------------------- Zócalo superior (solo reales) ------------------------- */
 function TopMessageTape({ items }: { items: Msg[] }) {
   const pills = React.useMemo(() => {
     const uniq = Array.from(
@@ -113,7 +114,7 @@ function TopMessageTape({ items }: { items: Msg[] }) {
         }
         .tapeTop .inner {
           display: inline-block;
-          animation: mscroll 90s linear infinite; /* lento para leer */
+          animation: mscroll 90s linear infinite;
         }
         .pill {
           display: inline-block;
@@ -145,22 +146,16 @@ function TopMessageTape({ items }: { items: Msg[] }) {
   );
 }
 
-/* ======================================================================= */
 export default function GardenOverlay() {
   const [portalEl, setPortalEl] = React.useState<Element | null>(null);
   React.useEffect(() => setPortalEl(document.body), []);
 
-  /* ---------- Sonido ---------- */
-  const muted = useMuteStore((s) => s.muted); // solo lectura
+  const muted = useMuteStore((s) => s.muted);
   const { play } = useSfx();
-
-  /* ---------- Barra de progreso (time-based) ---------- */
-  const LIFETIME_MS = 90_000; // ~90s de vida base
-  const EASE = 0.12;
 
   const [progress, setProgress] = React.useState(100);
   const startTsRef = React.useRef<number | null>(null);
-  const bonusRef = React.useRef(0); // ajustes por flores (±buffer)
+  const bonusRef = React.useRef(0);
 
   const [failed, setFailed] = React.useState(false);
   const hadProgressRef = React.useRef(false);
@@ -176,10 +171,10 @@ export default function GardenOverlay() {
       if (!startTsRef.current) startTsRef.current = start;
 
       const elapsed = Date.now() - start;
-      const t = Math.min(1, elapsed / LIFETIME_MS); // 0 → 1
-      const base = 100 * (1 - t); // 100 → 0 por tiempo
-
+      const t = Math.min(1, elapsed / LIFETIME_MS);
+      const base = 100 * (1 - t);
       const target = clamp(base + bonusRef.current);
+
       setProgress((prev) => {
         const next = lerp(prev, target, EASE);
         return Math.abs(next - target) < 0.2 ? target : next;
@@ -190,9 +185,8 @@ export default function GardenOverlay() {
 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [LIFETIME_MS]);
+  }, []);
 
-  // clicks sobre flores modifican el "bonus"
   React.useEffect(() => {
     const onKill = () => {
       bonusRef.current = clamp(bonusRef.current + 7, -30, 30);
@@ -212,20 +206,18 @@ export default function GardenOverlay() {
     };
   }, []);
 
-  // 🔥 lógica de game over: si llega a 0, mostramos pantalla
   React.useEffect(() => {
     if (progress < 100) {
       hadProgressRef.current = true;
     }
 
-    // si la barra vuelve a subir por encima de 2% cancelamos un posible timeout
     if (failTimeoutRef.current && progress > 2) {
       window.clearTimeout(failTimeoutRef.current);
       failTimeoutRef.current = null;
     }
 
     if (
-      progress <= 1 && // barra prácticamente en cero
+      progress <= 1 &&
       hadProgressRef.current &&
       !failedRef.current &&
       !failTimeoutRef.current
@@ -233,7 +225,7 @@ export default function GardenOverlay() {
       failTimeoutRef.current = window.setTimeout(() => {
         failedRef.current = true;
         setFailed(true);
-      }, 1000); // 1s para que se vea el 0%
+      }, 1000);
     }
   }, [progress]);
 
@@ -246,7 +238,6 @@ export default function GardenOverlay() {
     []
   );
 
-  /* ---------- Mensajes (Supabase realtime) ---------- */
   const [open, setOpen] = React.useState(false);
   const [txt, setTxt] = React.useState("");
   const [items, setItems] = React.useState<Msg[]>([]);
@@ -255,15 +246,18 @@ export default function GardenOverlay() {
 
   React.useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
         const sb = getSupabaseBrowser();
         setOnline("sb");
+
         const { data, error } = await sb
           .from("messages")
           .select("id,text,user_id,user_name,created_at")
           .order("created_at", { ascending: false })
           .limit(LIMIT_FETCH);
+
         if (error) throw error;
 
         const rows = (data ?? []) as Message[];
@@ -274,6 +268,7 @@ export default function GardenOverlay() {
           user_id: m.user_id ?? null,
           user_name: m.user_name ?? null,
         }));
+
         if (!cancelled) setItems(mapped);
 
         const ch = sb
@@ -297,12 +292,14 @@ export default function GardenOverlay() {
             }
           )
           .subscribe();
+
         chRef.current = ch;
       } catch {
         setOnline("local");
         setItems(readStorage());
       }
     })();
+
     return () => {
       cancelled = true;
       chRef.current?.unsubscribe();
@@ -325,13 +322,17 @@ export default function GardenOverlay() {
           user_id: null,
           user_name: null,
         };
+
         setItems((arr) => [optimistic, ...arr].slice(0, LIMIT_FETCH));
+
         const { data, error } = await sb
           .from("messages")
           .insert({ text })
           .select("id,text,user_id,user_name,created_at")
           .maybeSingle();
-        if (error || !data) throw new Error("Error al guardar");
+
+        if (error || !data) throw new Error("error");
+
         const real: Msg = {
           id: String(data.id),
           text: String(data.text ?? ""),
@@ -339,11 +340,13 @@ export default function GardenOverlay() {
           user_id: data.user_id ?? null,
           user_name: data.user_name ?? null,
         };
+
         setItems((arr) => {
           const w = arr.filter((m) => m.id !== tempId);
           if (w.some((x) => x.id === real.id)) return w;
           return [real, ...w].slice(0, LIMIT_FETCH);
         });
+
         if (!muted) play("plant", { volume: 0.55 });
         return;
       } catch {}
@@ -356,26 +359,22 @@ export default function GardenOverlay() {
       user_id: null,
       user_name: null,
     };
+
     const updated = [msg, ...items].slice(0, MAX_LOCAL);
     setItems(updated);
     writeStorage(updated);
     if (!muted) play("plant", { volume: 0.55 });
   }
 
-  // fade negro según barra, intensificado solo al final
-  const t = 1 - progress / 100; // 0 barra llena, 1 barra vacía
+  const t = 1 - progress / 100;
   const eased = Math.pow(Math.max(0, Math.min(1, t)), 2.2);
   const dimOpacity = 0.28 * eased;
-
-  // glow crítico en la barra
   const isCritical = progress <= 20;
 
-  /* ---------------------------- UI ---------------------------- */
   const ui = (
     <div
       style={{ position: "fixed", inset: 0, zIndex: 70, pointerEvents: "none" }}
     >
-      {/* GAME OVER del jardín */}
       {failed && (
         <div
           aria-hidden
@@ -439,7 +438,6 @@ export default function GardenOverlay() {
         </div>
       )}
 
-      {/* Fade oscuro del jardín */}
       <div
         aria-hidden
         style={{
@@ -453,10 +451,8 @@ export default function GardenOverlay() {
         }}
       />
 
-      {/* Zócalo superior */}
       <TopMessageTape items={items} />
 
-      {/* Barra vertical */}
       <div
         style={{
           position: "fixed",
@@ -516,7 +512,6 @@ export default function GardenOverlay() {
         </div>
       </div>
 
-      {/* Interfaz inferior */}
       <div
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
@@ -661,7 +656,6 @@ export default function GardenOverlay() {
   return createPortal(ui, portalEl);
 }
 
-/* ----------------------- Floaties ----------------------- */
 function Floaties() {
   const [arr, setArr] = React.useState<
     { id: number; text: string; left: number }[]
@@ -671,6 +665,7 @@ function Floaties() {
 
   React.useEffect(() => {
     const TAGS = ["#qepd🙏", "#rip🕊️", "#descansaenpaz💐", "#QEPD❤️‍🩹", "#RIP"];
+
     const onKill = () => {
       const id = nextId.current++;
       const text = TAGS[tagIdx.current++ % TAGS.length];
@@ -678,6 +673,7 @@ function Floaties() {
       setArr((a) => [...a, { id, text, left }]);
       setTimeout(() => setArr((a) => a.filter((f) => f.id !== id)), 1600);
     };
+
     window.addEventListener("ms:flowers:kill", onKill as EventListener);
     return () =>
       window.removeEventListener("ms:flowers:kill", onKill as EventListener);

@@ -8,18 +8,13 @@ type Props = {
   progress: number;
 };
 
-/**
- * Capa decorativa MUY ligera:
- * - NO pinta fondo, NO dibuja nubes 2D.
- * - Solo un halo y una viñeta sutil que se desvanecen con el progreso.
- * Útil si querés un toque de “luz” en la intro sin interferir con el 3D.
- */
 export default function SkyOverlay({ progress }: Props) {
   const prefersReduced = usePrefersReducedMotion();
 
-  // Si el usuario prefiere menos movimiento, evitamos el scale del halo y el fade agresivo
-  const fade = prefersReduced ? 1 : clamp(map(progress, 0.15, 0.7, 1, 0));
-  const haloScale = prefersReduced ? 1 : clamp(map(progress, 0, 0.6, 1, 1.18));
+  const fade = prefersReduced ? 1 : clamp(mapRange(progress, 0.15, 0.7, 1, 0));
+  const haloScale = prefersReduced
+    ? 1
+    : clamp(mapRange(progress, 0, 0.6, 1, 1.18));
 
   return (
     <div
@@ -29,14 +24,14 @@ export default function SkyOverlay({ progress }: Props) {
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1, // debajo del TextOverlay (que usa zIndex:2) y sobre el canvas
+        zIndex: 1,
         pointerEvents: "none",
         opacity: fade,
         transition: prefersReduced ? "none" : "opacity .25s linear",
         willChange: "opacity",
       }}
     >
-      {/* Halo central suave (no-fondo) */}
+      {/* Halo central */}
       <div
         style={{
           position: "absolute",
@@ -73,7 +68,7 @@ export default function SkyOverlay({ progress }: Props) {
         />
       </div>
 
-      {/* Viñeta suave para dar contraste al texto */}
+      {/* Viñeta ligera para contraste */}
       <div
         style={{
           position: "absolute",
@@ -87,27 +82,31 @@ export default function SkyOverlay({ progress }: Props) {
   );
 }
 
-/* ===========================
-   helpers
-   =========================== */
-function map(v: number, a: number, b: number, c: number, d: number) {
+/* helpers */
+function mapRange(v: number, a: number, b: number, c: number, d: number) {
   if (a === b) return d;
   return c + ((v - a) * (d - c)) / (b - a);
 }
+
 function clamp(v: number, lo = 0, hi = 1) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/* Respeta prefers-reduced-motion del SO/navegador */
+/* Respeta prefers-reduced-motion del sistema */
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = React.useState(false);
+
   React.useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
+
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(!!mq.matches);
+    const update = () => setReduced(mq.matches);
+
     update();
     mq.addEventListener?.("change", update);
+
     return () => mq.removeEventListener?.("change", update);
   }, []);
+
   return reduced;
 }

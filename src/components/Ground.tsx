@@ -10,17 +10,16 @@ type Props = {
   segments?: number;
   amplitude?: number;
   seed?: number;
-  /** Radio visual del jardín circular */
+  // Radio del jardín circular
   radius?: number;
-  /** Suavizado del borde (en unidades del mundo) */
+  // Suavizado del borde en unidades del mundo
   feather?: number;
 };
 
-/* ===== Config ===== */
 const GARDEN_RADIUS_DEFAULT = 60;
-const FEATHER_DEFAULT = 9; // ancho del “desvanecido” del borde
+const FEATHER_DEFAULT = 9;
 
-/* RNG determinístico ligero */
+// RNG simple y determinístico
 function mulberry32(seed = 1) {
   let t = seed >>> 0;
   return () => {
@@ -31,7 +30,6 @@ function mulberry32(seed = 1) {
   };
 }
 
-/* Paleta */
 const PALETTE = {
   baseA: "#5e9836",
   baseB: "#84b94f",
@@ -39,7 +37,7 @@ const PALETTE = {
   roughMid: "#7a7a7a",
 } as const;
 
-/* Texturas procedurales */
+// Textura de color del césped
 function makeGrassColor(rng: () => number, size = 512): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = size;
@@ -111,15 +109,17 @@ function makeGrassColor(rng: () => number, size = 512): THREE.CanvasTexture {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = true;
-  // assign colorSpace if available in this three.js build (avoid `any` by using unknown casts)
+
   const _srgb = (THREE as unknown as { SRGBColorSpace?: number })
     .SRGBColorSpace;
   if (_srgb !== undefined) {
     (tex as unknown as { colorSpace: number }).colorSpace = _srgb;
   }
+
   return tex;
 }
 
+// Textura de rugosidad
 function makeGrassRough(rng: () => number, size = 512): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = c.height = size;
@@ -150,10 +150,11 @@ function makeGrassRough(rng: () => number, size = 512): THREE.CanvasTexture {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.generateMipmaps = true;
+
   return tex;
 }
 
-/* Relieve (colinas) */
+// Geometría del relieve
 function makeHillsGeometry(
   width = 200,
   depth = 200,
@@ -167,8 +168,6 @@ function makeHillsGeometry(
 
   const hw = width / 2;
   const hd = depth / 2;
-
-  // Para un borde físico más prolijo, reducimos altura fuera del radio+feather
   const rMax = radius + feather;
 
   for (let i = 0; i < pos.count; i++) {
@@ -178,25 +177,21 @@ function makeHillsGeometry(
     const nx = x / hw;
     const ny = y / hd;
 
-    // Ruido suave
     let h =
       0.55 * Math.sin(nx * Math.PI * 0.9) * Math.cos(ny * Math.PI * 0.8) +
       0.28 * Math.sin((nx + ny) * Math.PI * 0.55) +
       0.18 * Math.cos((nx - ny) * Math.PI * 0.5);
 
-    // Caída radial global (para que el centro sea protagonista)
     const rNorm = Math.sqrt(nx * nx + ny * ny);
     const falloff = 1 - Math.min(1, Math.pow(rNorm / 1.4, 2.2));
     h *= Math.max(0, falloff);
 
-    // Aplanado físico fuera del círculo (opcional pero ayuda a raycasting)
     const r = Math.hypot(x, y);
     if (r > rMax) {
-      h *= 0.0;
+      h *= 0;
     } else if (r > radius) {
-      // transiciona a 0 entre radius..radius+feather
       const k = (r - radius) / feather;
-      h *= 1.0 - Math.min(1, k);
+      h *= 1 - Math.min(1, k);
     }
 
     pos.setZ(i, h * amplitude);
@@ -207,7 +202,6 @@ function makeHillsGeometry(
   return geo;
 }
 
-/* Componente */
 export default function Ground({
   size = 200,
   segments = 240,
@@ -233,6 +227,7 @@ export default function Ground({
     const offU = rng();
     const offV = rng();
     color.offset.set(offU, offV);
+
     const maxAniso = Math.min(8, gl.capabilities.getMaxAnisotropy?.() ?? 1);
     (color as unknown as { anisotropy: number }).anisotropy = maxAniso;
     (rough as unknown as { anisotropy: number }).anisotropy = maxAniso;
@@ -263,7 +258,6 @@ export default function Ground({
     return () => {
       colorMap.dispose();
       roughMap.dispose();
-      // bumpMap is a Texture (clone of roughMap) and exposes dispose()
       (bumpMap as THREE.Texture).dispose();
       hillsGeo.dispose();
     };
@@ -275,23 +269,23 @@ export default function Ground({
       map: colorMap,
       roughnessMap: roughMap,
       roughness: 0.96,
-      metalness: 0.0,
+      metalness: 0,
       bumpMap: bumpMap,
       bumpScale: 0.008,
       envMapIntensity: 0.15,
       side: THREE.FrontSide,
       fog: true,
       transparent: true,
-      alphaTest: 0.001, // que el alphatest haga efecto
-      depthWrite: true, // escribimos Z dentro del disco (mejor orden)
+      alphaTest: 0.001,
+      depthWrite: true,
     });
 
-    // Anti-alias del borde si usás MSAA
-    const mExt = m as THREE.MeshStandardMaterial & { alphaToCoverage?: boolean };
+    const mExt = m as THREE.MeshStandardMaterial & {
+      alphaToCoverage?: boolean;
+    };
     mExt.alphaToCoverage = true;
 
     m.onBeforeCompile = (shader) => {
-      // 1) pasar posición mundo al fragment
       shader.vertexShader = shader.vertexShader.replace(
         "#include <common>",
         `#include <common>
@@ -304,32 +298,26 @@ export default function Ground({
        vWorldPos = wp.xyz;`
       );
 
-      // 2) declarar varying en fragment
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
        varying vec3 vWorldPos;`
       );
 
-      // 3) recorte circular ANTES del alphatest, afectando diffuseColor.a
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <alphatest_fragment>",
         `
-        // --- circular mask ---
         float r = length(vWorldPos.xz);
         float R = ${radius.toFixed(3)};
         float F = ${feather.toFixed(3)};
         float edge0 = max(0.0, R - F);
         float edge1 = R;
 
-        // fuera del disco: descartar
         if (r > edge1) { discard; }
 
-        // feather en el borde: baja alpha de forma suave
         float k = smoothstep(edge0, edge1, r);
         diffuseColor.a *= (1.0 - k);
 
-        // continuar con el alphatest estándar
         #include <alphatest_fragment>
       `
       );

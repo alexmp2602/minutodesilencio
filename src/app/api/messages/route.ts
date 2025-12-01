@@ -10,6 +10,7 @@ function noCache(res: NextResponse) {
   res.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
   return res;
 }
+
 function errJson(msg: string, where: string, status = 400) {
   return noCache(
     NextResponse.json({ ok: false, error: `${where}: ${msg}` }, { status })
@@ -20,7 +21,6 @@ export async function OPTIONS() {
   return noCache(new NextResponse(null, { status: 204 }));
 }
 
-/** GET /api/messages?limit=120 */
 export async function GET(req: NextRequest) {
   const where = "messages.GET";
   try {
@@ -46,7 +46,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/messages { text, user_id?, user_name? } */
 export async function POST(req: NextRequest) {
   const where = "messages.POST";
   try {

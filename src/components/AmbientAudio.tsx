@@ -6,11 +6,11 @@ import { useMute } from "@/hooks/useMute";
 
 type Props = {
   src: string;
-  /** Volumen objetivo cuando no está muteado (0..1) */
+  // Volumen base cuando no está muteado (0..1)
   volume?: number;
-  /** Duración del crossfade en ms */
+  // Duración del crossfade en ms
   fadeMs?: number;
-  /** Pausar si la pestaña queda oculta */
+  // Pausar si la pestaña queda oculta
   pauseOnHidden?: boolean;
 };
 
@@ -22,7 +22,7 @@ export default function AmbientAudio({
   fadeMs = 280,
   pauseOnHidden = true,
 }: Props) {
-  const { muted } = useMute(); // 🔉 única fuente de mute global
+  const { muted } = useMute();
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // refs de animación y control
@@ -68,53 +68,56 @@ export default function AmbientAudio({
           fadeRafRef.current = null;
         }
       };
+
       fadeRafRef.current = requestAnimationFrame(step);
     },
     [cancelFade]
   );
 
-  // Montaje: configura el elemento, intenta reproducir y setea listeners
+  // Configuración inicial y listeners
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
 
     el.loop = true;
     el.preload = "auto";
-    el.muted = false; // controlamos volumen nosotros
+    el.muted = false;
     el.volume = 0;
 
     const tryPlay = () => el.play().catch(() => {});
 
-    // Desbloqueo por primera interacción (políticas de autoplay)
+    // Desbloqueo por primera interacción (autoplay)
     const unlock = () => {
       if (!muted && el.paused) {
         el.volume = 0;
         tryPlay().then(() => fadeTo(el, targetVolRef.current, fadeMs));
       }
     };
+
     window.addEventListener("pointerdown", unlock, { once: true });
     window.addEventListener("keydown", unlock, { once: true });
     window.addEventListener("touchend", unlock, { once: true });
 
-    // Ocultar/mostrar pestaña
+    // Pausa/reanuda según visibilidad de la pestaña
     const onVisibility = () => {
       if (!pauseOnHidden) return;
       if (document.hidden) el.pause();
       else if (!muted) tryPlay();
     };
+
     document.addEventListener("visibilitychange", onVisibility, {
       passive: true,
     });
 
-    // Si arranca sin estar muteado, reproducimos con fade in
+    // Si arranca sin mute, reproducir con fade in
     if (!muted) {
       tryPlay().then(() => fadeTo(el, targetVolRef.current, fadeMs));
     }
 
-    // Manejo de error silencioso para evitar logs ruidosos en móviles
     const onError = () => {
-      // Si hubo error de reproducción, el siguiente unmute o cambio de src reintentará
+      // Próximos cambios de mute o src volverán a intentar la reproducción
     };
+
     el.addEventListener("error", onError);
 
     return () => {
@@ -128,9 +131,9 @@ export default function AmbientAudio({
       el.pause();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // solo una vez al montar
+  }, []); // solo al montar
 
-  // Reaccionar a cambios de mute
+  // Cambios de mute
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
@@ -155,15 +158,14 @@ export default function AmbientAudio({
     }
   }, [muted, fadeMs, fadeTo, clearPauseTimeout]);
 
-  // Reaccionar a cambios de volumen objetivo
+  // Cambios en el volumen objetivo
   useEffect(() => {
     const el = audioRef.current;
     if (!el || muted) return;
-    // Fade hacia el nuevo volumen objetivo
     fadeTo(el, targetVolRef.current, Math.max(120, Math.min(600, fadeMs)));
   }, [volume, muted, fadeMs, fadeTo]);
 
-  // Cambio de pista (src): crossfade rápido hacia 0, pausa, recarga y fade in si corresponde
+  // Cambios de src: crossfade rápido
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
@@ -172,16 +174,16 @@ export default function AmbientAudio({
 
     const swap = async () => {
       cancelFade();
-      // Si estaba sonando, bajamos a 0 antes de cambiar
+
       if (!el.paused && el.volume > 0) {
         await new Promise<void>((res) => {
           fadeTo(el, 0, Math.min(220, fadeMs));
           setTimeout(res, Math.min(240, fadeMs + 20));
         });
       }
+
       if (cancelled) return;
 
-      // Forzamos recarga (Safari/Firefox en cambios rápidos)
       el.pause();
       el.currentTime = 0;
 
@@ -193,16 +195,18 @@ export default function AmbientAudio({
           fadeTo(el, targetVolRef.current, fadeMs);
         }
       };
+
       el.addEventListener("canplay", onCanPlay);
 
       try {
-        el.load(); // algunos navegadores requieren load() explícito
+        el.load();
       } catch {
         // noop
       }
     };
 
     swap();
+
     return () => {
       cancelled = true;
     };
