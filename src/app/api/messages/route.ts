@@ -3,7 +3,6 @@ import { getSupabaseServer } from "@/lib/supabaseServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const preferredRegion = "home";
 export const revalidate = 0;
 
 function noCache(res: NextResponse) {
